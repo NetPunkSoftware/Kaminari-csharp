@@ -2,8 +2,11 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class PacketWithOpcode
+namespace Kaminari
 {
-    public Packet packet;
-    public ushort opcode;
+    public class PacketWithOpcode
+    {
+        public Packet packet;
+        public ushort opcode;
+    }
 }

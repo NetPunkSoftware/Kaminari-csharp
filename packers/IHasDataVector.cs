@@ -2,8 +2,11 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public interface IHasDataVector<T> : IData
+namespace Kaminari
 {
-	void initialize();
-	List<T> getData();
+	public interface IHasDataVector<T> : IData
+	{
+		void initialize();
+		List<T> getData();
+	}
 }

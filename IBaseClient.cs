@@ -2,12 +2,15 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public interface IBaseClient
+namespace Kaminari
 {
-	bool hasPendingSuperPackets();
-	ushort firstSuperPacketId();
-	byte[] popPendingSuperPacket();
+	public interface IBaseClient
+	{
+		bool hasPendingSuperPackets();
+		ushort firstSuperPacketId();
+		byte[] popPendingSuperPacket();
 
-	void disconnect();
-	void handlingError();
+		void disconnect();
+		void handlingError();
+	}
 }

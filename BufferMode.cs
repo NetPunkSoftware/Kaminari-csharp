@@ -2,9 +2,12 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public enum BufferMode
+namespace Kaminari
 {
-	NO_BUFFER =		0,
-	BUFFERING =		1,
-	READY =			2
+	public enum BufferMode
+	{
+		NO_BUFFER =		0,
+		BUFFERING =		1,
+		READY =			2
+	}
 }

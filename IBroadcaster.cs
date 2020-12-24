@@ -3,7 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public interface IBroadcaster<T>
+namespace Kaminari
 {
-    void broadcast(Action<T> operation);
+    public interface IBroadcaster<T>
+    {
+        void broadcast(Action<T> operation);
+    }
 }

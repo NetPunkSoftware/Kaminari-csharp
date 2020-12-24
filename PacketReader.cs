@@ -2,23 +2,26 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class PacketReader : Packet
+namespace Kaminari
 {
-	public PacketReader(Buffer buffer) : base(buffer)
-	{}
-
-	public ulong timestamp()
+	public class PacketReader : Packet
 	{
-		return 0;
-	}
+		public PacketReader(Buffer buffer) : base(buffer)
+		{ }
 
-	public int bytesRead()
-	{
-		return buffer.getPosition();
-	}
+		public ulong timestamp()
+		{
+			return 0;
+		}
 
-	public int bufferSize()
-	{
-		return buffer.getSize();
+		public int bytesRead()
+		{
+			return buffer.getPosition();
+		}
+
+		public int bufferSize()
+		{
+			return buffer.getSize();
+		}
 	}
 }

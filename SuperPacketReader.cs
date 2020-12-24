@@ -2,95 +2,98 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class SuperPacketReader<PQ> where PQ : IProtocolQueues
+namespace Kaminari
 {
-	private Buffer _buffer;
-	private uint _ackEnd;
-	private bool _hasAcks;
-
-	public SuperPacketReader(byte[] data)
+	public class SuperPacketReader<PQ> where PQ : IProtocolQueues
 	{
-		_buffer = new Buffer(data);
-	}
+		private Buffer _buffer;
+		private uint _ackEnd;
+		private bool _hasAcks;
 
-	public ushort length()
-	{
-		return _buffer.readUshort(0);
-	}
-
-	public ushort id()
-	{
-		return _buffer.readUshort(2);
-	}
-
-	public ushort timestamp()
-	{
-		return _buffer.readUshort(4);
-	}
-
-	public List<ushort> getAcks()
-	{
-		List<ushort> acks = new List<ushort>();
-		_ackEnd = sizeof(ushort) * 2;
-		int numAcks = (int)_buffer.readByte((int)_ackEnd);
-		_hasAcks = numAcks != 0;
-		_ackEnd += sizeof(byte);
-
-		for (int i = 0; i < numAcks; ++i)
+		public SuperPacketReader(byte[] data)
 		{
-			ushort ack = _buffer.readUshort((int)_ackEnd);
-			acks.Add(ack);
-			_ackEnd += sizeof(ushort);
+			_buffer = new Buffer(data);
 		}
 
-		return acks;
-	}
-
-	public bool hasData()
-	{
-		return _buffer.readByte((int)_ackEnd) != 0;
-	}
-
-	public bool isPingPacket()
-	{
-		return !_hasAcks && !hasData();
-	}
-
-	public void handlePackets<T>(Protocol<PQ> protocol, IHandlePacket handler, T client) where T : IBaseClient
-	{
-		int numBlocks = (int)_buffer.readByte((int)_ackEnd);
-		int blockPos = (int)_ackEnd + sizeof(byte);
-
-		int remaining = 500 - blockPos;
-		for (int i = 0; i < numBlocks; ++i)
+		public ushort length()
 		{
-			ushort blockId = _buffer.readUshort(blockPos);
-			int numPackets = (int)_buffer.readByte(blockPos + sizeof(ushort));
-			if (numPackets == 0)
+			return _buffer.readUshort(0);
+		}
+
+		public ushort id()
+		{
+			return _buffer.readUshort(2);
+		}
+
+		public ushort timestamp()
+		{
+			return _buffer.readUshort(4);
+		}
+
+		public List<ushort> getAcks()
+		{
+			List<ushort> acks = new List<ushort>();
+			_ackEnd = sizeof(ushort) * 2;
+			int numAcks = (int)_buffer.readByte((int)_ackEnd);
+			_hasAcks = numAcks != 0;
+			_ackEnd += sizeof(byte);
+
+			for (int i = 0; i < numAcks; ++i)
 			{
-				return;
+				ushort ack = _buffer.readUshort((int)_ackEnd);
+				acks.Add(ack);
+				_ackEnd += sizeof(ushort);
 			}
 
-			blockPos += sizeof(ushort) + sizeof(byte);
-			remaining -= sizeof(ushort) + sizeof(byte);
+			return acks;
+		}
 
-			for (int j = 0; j < numPackets && remaining > 0; ++j)
+		public bool hasData()
+		{
+			return _buffer.readByte((int)_ackEnd) != 0;
+		}
+
+		public bool isPingPacket()
+		{
+			return !_hasAcks && !hasData();
+		}
+
+		public void handlePackets<T>(Protocol<PQ> protocol, IHandlePacket handler, T client) where T : IBaseClient
+		{
+			int numBlocks = (int)_buffer.readByte((int)_ackEnd);
+			int blockPos = (int)_ackEnd + sizeof(byte);
+
+			int remaining = 500 - blockPos;
+			for (int i = 0; i < numBlocks; ++i)
 			{
-				PacketReader packet = new PacketReader(new Buffer(_buffer, blockPos, Packet.dataStart));
-				int length = packet.getLength();
-				blockPos += length;
-				remaining -= length;
-
-				if (length < Packet.dataStart || remaining < 0)
+				ushort blockId = _buffer.readUshort(blockPos);
+				int numPackets = (int)_buffer.readByte(blockPos + sizeof(ushort));
+				if (numPackets == 0)
 				{
 					return;
 				}
 
-				if (protocol.resolve(packet, blockId))
+				blockPos += sizeof(ushort) + sizeof(byte);
+				remaining -= sizeof(ushort) + sizeof(byte);
+
+				for (int j = 0; j < numPackets && remaining > 0; ++j)
 				{
-					if (!handler.handlePacket(packet, client))
+					PacketReader packet = new PacketReader(new Buffer(_buffer, blockPos, Packet.dataStart));
+					int length = packet.getLength();
+					blockPos += length;
+					remaining -= length;
+
+					if (length < Packet.dataStart || remaining < 0)
 					{
-						client.handlingError();
+						return;
+					}
+
+					if (protocol.resolve(packet, blockId))
+					{
+						if (!handler.handlePacket(packet, client))
+						{
+							client.handlingError();
+						}
 					}
 				}
 			}

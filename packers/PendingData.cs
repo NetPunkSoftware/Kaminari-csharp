@@ -2,14 +2,17 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class PendingData<T>
+namespace Kaminari
 {
-	public T data;
-	public List<ushort> blocks;
-
-	public PendingData(T data)
+	public class PendingData<T>
 	{
-		this.data = data;
-		this.blocks = new List<ushort>();
+		public T data;
+		public List<ushort> blocks;
+
+		public PendingData(T data)
+		{
+			this.data = data;
+			this.blocks = new List<ushort>();
+		}
 	}
 }

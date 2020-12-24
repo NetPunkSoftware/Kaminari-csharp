@@ -2,7 +2,10 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public interface IMarshal : IHandlePacket
+namespace Kaminari
 {
-    int size<T>();
+    public interface IMarshal : IHandlePacket
+    {
+        int size<T>();
+    }
 }

@@ -2,7 +2,10 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public interface IHandlePacket
+namespace Kaminari
 {
-    bool handlePacket<T>(PacketReader packet, T client) where T : IBaseClient;
+    public interface IHandlePacket
+    {
+        bool handlePacket<T>(PacketReader packet, T client) where T : IBaseClient;
+    }
 }

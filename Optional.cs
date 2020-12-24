@@ -2,29 +2,32 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Optional<T>
+namespace Kaminari
 {
-	private T value;
-	private bool empty;
-
-	Optional()
+	public class Optional<T>
 	{
-		empty = true;
-	}
+		private T value;
+		private bool empty;
 
-	public bool hasValue()
-	{
-		return !empty;
-	}
+		public Optional()
+		{
+			empty = true;
+		}
 
-	public T getValue()
-	{
-		return value;
-	}
+		public bool hasValue()
+		{
+			return !empty;
+		}
 
-	public void setValue(T value)
-	{
-		Debug.Assert(empty, "Optional already has value");
-		this.value = value;
+		public T getValue()
+		{
+			return value;
+		}
+
+		public void setValue(T value)
+		{
+			Debug.Assert(empty, "Optional already has value");
+			this.value = value;
+		}
 	}
 }

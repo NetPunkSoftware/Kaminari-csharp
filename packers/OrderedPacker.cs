@@ -3,89 +3,92 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class OrderedPacker : Packer<Packet, IData>
+namespace Kaminari
 {
-	protected bool hasNewPacket;
-	protected ushort lastBlock;
-	
-	
-	public override void onAck(List<PendingData<Packet>> toBeRemoved)
+	public class OrderedPacker : Packer<Packet, IData>
 	{
-		// Do nothing on purpose
-	}
+		protected bool hasNewPacket;
+		protected ushort lastBlock;
 
-	public override void onClear()
-	{
-		// Do nothing on purpose
-	}
 
-	public override void add(Packet packet)
-	{
-		pending.Add(new PendingData<Packet>(packet));
-		hasNewPacket = true;
-	}
-
-	public override void add(IMarshal marshal, ushort opcode, IData data, Action callback)
-	{
-		Packet packet = Packet.make(opcode, callback);
-		data.pack(marshal, packet);
-		add(packet);
-	}
-
-	public override void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock)
-	{
-		if (!isPending(blockId)) 
+		public override void onAck(List<PendingData<Packet>> toBeRemoved)
 		{
-			return;
+			// Do nothing on purpose
 		}
-		
-		int numInserted = 0;
-		foreach (PendingData<Packet> pnd in pending) 
+
+		public override void onClear()
 		{
-			uint actualBlock = getActualBlock(pnd.blocks, blockId);
-			ushort size = pnd.data.getSize();
-			
-			if (byBlock.ContainsKey(actualBlock)) 
+			// Do nothing on purpose
+		}
+
+		public override void add(Packet packet)
+		{
+			pending.Add(new PendingData<Packet>(packet));
+			hasNewPacket = true;
+		}
+
+		public override void add(IMarshal marshal, ushort opcode, IData data, Action callback)
+		{
+			Packet packet = Packet.make(opcode, callback);
+			data.pack(marshal, packet);
+			add(packet);
+		}
+
+		public override void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock)
+		{
+			if (!isPending(blockId))
 			{
-				if (size > remaining) 
-				{
-					break;
-				}
-				
-				byBlock[actualBlock].Add(pnd.data);
+				return;
 			}
-			else 
+
+			int numInserted = 0;
+			foreach (PendingData<Packet> pnd in pending)
 			{
-				size = (ushort) (size + 4);
-				if (size > remaining)
+				uint actualBlock = getActualBlock(pnd.blocks, blockId);
+				ushort size = pnd.data.getSize();
+
+				if (byBlock.ContainsKey(actualBlock))
 				{
-					break;
+					if (size > remaining)
+					{
+						break;
+					}
+
+					byBlock[actualBlock].Add(pnd.data);
 				}
-				
-				byBlock.Add(actualBlock, new List<Packet>());
-				byBlock[actualBlock].Add(pnd.data);
+				else
+				{
+					size = (ushort)(size + 4);
+					if (size > remaining)
+					{
+						break;
+					}
+
+					byBlock.Add(actualBlock, new List<Packet>());
+					byBlock[actualBlock].Add(pnd.data);
+				}
+
+				pnd.blocks.Add(blockId);
+				remaining = (ushort)(remaining - size);
+				++numInserted;
 			}
-			
-			pnd.blocks.Add(blockId);
-			remaining = (ushort) (remaining - size);
-			++numInserted;
+
+			if (numInserted > 0)
+			{
+				hasNewPacket = false;
+				lastBlock = blockId;
+			}
 		}
-		
-		if (numInserted > 0)
+
+		protected bool isPending(ushort blockId)
 		{
-			hasNewPacket = false;
-			lastBlock = blockId;
+			if (pending.Count == 0)
+			{
+				return false;
+			}
+
+			return hasNewPacket ||
+					Overflow.sub(blockId, lastBlock) >= Constants.ResendThreshold;
 		}
-	}
-	
-	protected bool isPending(ushort blockId)
-	{
-		if (pending.Count == 0) 
-		{
-			return false;
-		}
-		
-		return hasNewPacket ||
-				Overflow.sub(blockId, lastBlock) >= Constants.ResendThreshold;
 	}
 }

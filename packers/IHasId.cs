@@ -2,8 +2,11 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public interface IHasId : IData
+namespace Kaminari
 {
-    ulong getId();
-    void setId(ulong id);
+    public interface IHasId : IData
+    {
+        ulong getId();
+        void setId(ulong id);
+    }
 }
