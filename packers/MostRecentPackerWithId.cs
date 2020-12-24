@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -26,7 +27,7 @@ public class MostRecentPackerWithId : Packer<PacketWithId, IHasId>
 		Debug.Assert(false, "Unsupported operation");
 	}
 
-	public override void add(IMarshal marshal, ushort opcode, IHasId data, IAckCallback callback) 
+	public override void add(IMarshal marshal, ushort opcode, IHasId data, Action callback) 
 	{
 		
 	}

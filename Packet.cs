@@ -1,10 +1,11 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class Packet
 {
-	public IAckCallback onAcked;
+	public Action onAcked;
 	public static int dataStart = sizeof(byte) * 2 + sizeof(ushort) + sizeof(byte);
 
 	protected Buffer buffer;
@@ -15,7 +16,7 @@ public class Packet
 	}
 
 	// FIXME(gpascualg): Packets with ack callbacks
-	public static Packet make(ushort opcode, IAckCallback onAcked)
+	public static Packet make(ushort opcode, Action onAcked)
 	{
 		Packet packet = Packet.make(opcode);
 		packet.onAcked = onAcked;

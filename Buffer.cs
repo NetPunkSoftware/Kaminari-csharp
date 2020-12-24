@@ -59,6 +59,18 @@ public class Buffer
 		_index += sizeof(byte);
 	}
 
+	public void write(char value)
+	{
+		write(_index, (byte)value);
+		_index += sizeof(byte);
+	}
+
+	public void write(bool value)
+	{
+		write(_index, (byte)(value ? 1 : 0));
+		_index += sizeof(byte);
+	}
+
 	public void write(short value)
 	{
 		write(_index, (ushort)value);
@@ -138,6 +150,15 @@ public class Buffer
 		for (int i = 0; i < other.getPosition(); ++i)
 		{
 			_body[_offset + _index++] = other._body[i];
+		}
+	}
+
+	public void write(string str)
+	{
+		write((byte)str.Length);
+		for (int i = 0; i < str.Length; ++i)
+		{
+			write((byte)str[i]);
 		}
 	}
 

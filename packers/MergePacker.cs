@@ -1,6 +1,6 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 
 public class MergePacker<G, D> : Packer<D, D> where G : IHasDataVector<D>, new() where D : IHasId
@@ -27,7 +27,7 @@ public class MergePacker<G, D> : Packer<D, D> where G : IHasDataVector<D>, new()
 		Debug.Assert(false, "Not supported");
 	}
 
-	public override void add(IMarshal marshal, ushort _opcode, D data, IAckCallback callback)
+	public override void add(IMarshal marshal, ushort _opcode, D data, Action callback)
 	{
 		pending.Add(new PendingData<D>(data));
 	}

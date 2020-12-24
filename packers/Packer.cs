@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -14,7 +15,7 @@ public abstract class Packer<T, D> : IPacker<T, D> where D : IData
 
 	public abstract void add(Packet packet);
 
-	public abstract void add(IMarshal marshal, ushort opcode, D data, IAckCallback callback);
+	public abstract void add(IMarshal marshal, ushort opcode, D data, Action callback);
 	
 	public abstract void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock);
 

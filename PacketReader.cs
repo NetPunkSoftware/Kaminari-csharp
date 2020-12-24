@@ -7,7 +7,7 @@ public class PacketReader : Packet
 	public PacketReader(Buffer buffer) : base(buffer)
 	{}
 
-	public long timestamp()
+	public ulong timestamp()
 	{
 		return 0;
 	}

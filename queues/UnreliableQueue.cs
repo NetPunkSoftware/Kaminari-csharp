@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -18,7 +19,7 @@ public class UnreliableQueue<P, T> where P : IPacker<T, IData>
 		this.maxRetries = maxRetries;
 	}
 
-	public void add(IMarshal marshal, ushort opcode, IData data, IAckCallback callback)
+	public void add(IMarshal marshal, ushort opcode, IData data, Action callback)
 	{
 		packer.add(marshal, opcode, data, callback);
 	}

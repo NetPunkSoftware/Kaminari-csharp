@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -24,7 +25,7 @@ public class OrderedPacker : Packer<Packet, IData>
 		hasNewPacket = true;
 	}
 
-	public override void add(IMarshal marshal, ushort opcode, IData data, IAckCallback callback)
+	public override void add(IMarshal marshal, ushort opcode, IData data, Action callback)
 	{
 		Packet packet = Packet.make(opcode, callback);
 		data.pack(marshal, packet);
