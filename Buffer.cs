@@ -37,6 +37,12 @@ public class Buffer
 		_index = 0;
 	}
 
+	// TODO(gpascualg): This is not really C#-y
+	public byte[] getData()
+	{
+		return _body;
+	}
+
 	public int getPosition()
 	{
 		return _index;
@@ -116,8 +122,6 @@ public class Buffer
 	{
 		_body[position + 1] = (byte)(value >> 8);
 		_body[position] = (byte)(value);
-
-		_index += sizeof(ushort);
 	}
 
 	public void write(int position, uint value)
@@ -126,8 +130,6 @@ public class Buffer
 		_body[position + 2] = (byte)(value >> 16);
 		_body[position + 1] = (byte)(value >> 8);
 		_body[position] = (byte)(value);
-
-		_index += sizeof(uint);
 	}
 
 	public void write(int position, ulong value)
@@ -140,8 +142,20 @@ public class Buffer
 		_body[position + 2] = (byte)(value >> 16);
 		_body[position + 1] = (byte)(value >> 8);
 		_body[position] = (byte)(value);
+	}
 
-		_index += sizeof(ulong);
+	public void write(float value)
+	{
+		write(_index, value);
+		_index += sizeof(float);
+	}
+
+	public void write(int position, float value)
+	{
+		foreach (byte b in BitConverter.GetBytes(value))
+		{
+			write(position, b);
+		}
 	}
 
 	public void write(Packet packet)

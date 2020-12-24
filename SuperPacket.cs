@@ -93,7 +93,7 @@ public class SuperPacket<PQ> where PQ : IProtocolQueues
             // Write in packets
             foreach (var entry in by_block)
             {
-                _buffer.write(Convert.ToUInt16(entry.Key & 0xffff));
+                _buffer.write((ushort)Convert.ToUInt16(entry.Key & 0xffff));
                 _buffer.write((byte)entry.Value.Count);
 
                 foreach (var packet in entry.Value)

@@ -20,7 +20,6 @@ public abstract class Client<PQ> : IBaseClient where PQ : IProtocolQueues
 
 	public void updateInputs()
 	{
-		// TODO: Populate pendingPackets somewhere
 		protocol.read(this, superPacket, marshal);
 	}
 
@@ -33,22 +32,14 @@ public abstract class Client<PQ> : IBaseClient where PQ : IProtocolQueues
 		}
 	}
 	
-	public void tryReceive()
+	public void onReceived(byte[] data)
 	{
-		// TODO(gpascualg): Magic numbers
-		byte[] data = new byte[500];
-		receive(ref data);
 		pendingPackets.Add(data);
 	}
 	
 	public PQ getSender()
 	{
 		return superPacket.getQueues();
-	}
-
-	public void disconnect()
-	{
-
 	}
 
 	public bool hasPendingSuperPackets()
@@ -79,6 +70,6 @@ public abstract class Client<PQ> : IBaseClient where PQ : IProtocolQueues
 
 	// ABSTRACT METHODS LEFT TO IMPLEMENTATION
 	protected abstract void send(Buffer buffer);
-	protected abstract void receive(ref byte[] packet);
 	public abstract void handlingError();
+	public abstract void disconnect();
 }
