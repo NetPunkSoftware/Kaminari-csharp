@@ -31,7 +31,7 @@ namespace Kaminari
         public static ushort sub(ushort x, ushort y)
         {
             return
-                (x > y) ? (ushort)(x - y) : (ushort)(ushort.MaxValue - y + x);
+                (x >= y) ? (ushort)(x - y) : (ushort)(ushort.MaxValue - y + x);
         }
 
         public static ushort sub0(ushort x, ushort y)

@@ -115,41 +115,41 @@ namespace Kaminari
 			_index += sizeof(ulong);
 		}
 
-		public void write(int position, byte value)
-		{
-			_body[position] = value;
-		}
-
-		public void write(int position, ushort value)
-		{
-			_body[position + 1] = (byte)(value >> 8);
-			_body[position] = (byte)(value);
-		}
-
-		public void write(int position, uint value)
-		{
-			_body[position + 3] = (byte)(value >> 24);
-			_body[position + 2] = (byte)(value >> 16);
-			_body[position + 1] = (byte)(value >> 8);
-			_body[position] = (byte)(value);
-		}
-
-		public void write(int position, ulong value)
-		{
-			_body[position + 7] = (byte)(value >> 56);
-			_body[position + 6] = (byte)(value >> 48);
-			_body[position + 5] = (byte)(value >> 40);
-			_body[position + 4] = (byte)(value >> 32);
-			_body[position + 3] = (byte)(value >> 24);
-			_body[position + 2] = (byte)(value >> 16);
-			_body[position + 1] = (byte)(value >> 8);
-			_body[position] = (byte)(value);
-		}
-
 		public void write(float value)
 		{
 			write(_index, value);
 			_index += sizeof(float);
+		}
+
+		public void write(int position, byte value)
+		{
+			_body[_offset + position] = value;
+		}
+
+		public void write(int position, ushort value)
+		{
+			_body[_offset + position + 1] = (byte)(value >> 8);
+			_body[_offset + position] = (byte)(value);
+		}
+
+		public void write(int position, uint value)
+		{
+			_body[_offset + position + 3] = (byte)(value >> 24);
+			_body[_offset + position + 2] = (byte)(value >> 16);
+			_body[_offset + position + 1] = (byte)(value >> 8);
+			_body[_offset + position] = (byte)(value);
+		}
+
+		public void write(int position, ulong value)
+		{
+			_body[_offset + position + 7] = (byte)(value >> 56);
+			_body[_offset + position + 6] = (byte)(value >> 48);
+			_body[_offset + position + 5] = (byte)(value >> 40);
+			_body[_offset + position + 4] = (byte)(value >> 32);
+			_body[_offset + position + 3] = (byte)(value >> 24);
+			_body[_offset + position + 2] = (byte)(value >> 16);
+			_body[_offset + position + 1] = (byte)(value >> 8);
+			_body[_offset + position] = (byte)(value);
 		}
 
 		public void write(int position, float value)
