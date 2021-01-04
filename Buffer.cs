@@ -154,9 +154,10 @@ namespace Kaminari
 
 		public void write(int position, float value)
 		{
-			foreach (byte b in BitConverter.GetBytes(value))
+			byte[] bytes = BitConverter.GetBytes(value);
+			for (int i = 0; i < 4; ++i)
 			{
-				write(position, b);
+				write(position + i, bytes[i]);
 			}
 		}
 

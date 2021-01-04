@@ -28,6 +28,7 @@ namespace Kaminari
 		{
 			Debug.Assert(empty, "Optional already has value");
 			this.value = value;
+			empty = false;
 		}
 	}
 }
