@@ -73,12 +73,13 @@ namespace Kaminari
 					return;
 				}
 
+            	ulong blockTimestamp = protocol.blockTimestamp(blockId);
 				blockPos += sizeof(ushort) + sizeof(byte);
 				remaining -= sizeof(ushort) + sizeof(byte);
 
 				for (int j = 0; j < numPackets && remaining > 0; ++j)
 				{
-					PacketReader packet = new PacketReader(new Buffer(_buffer, blockPos, Packet.dataStart));
+					PacketReader packet = new PacketReader(new Buffer(_buffer, blockPos, Packet.dataStart), blockTimestamp);
 					int length = packet.getLength();
 					blockPos += length;
 					remaining -= length;

@@ -6,12 +6,16 @@ namespace Kaminari
 {
 	public class PacketReader : Packet
 	{
-		public PacketReader(Buffer buffer) : base(buffer)
-		{ }
+		private ulong _timestamp;
+
+		public PacketReader(Buffer buffer, ulong timestamp) : base(buffer)
+		{ 
+			_timestamp = timestamp;
+		}
 
 		public ulong timestamp()
 		{
-			return 0;
+			return _timestamp;
 		}
 
 		public int bytesRead()
