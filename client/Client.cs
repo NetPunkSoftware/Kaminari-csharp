@@ -7,6 +7,7 @@ namespace Kaminari
 {
 	public abstract class Client<PQ> : IBaseClient where PQ : IProtocolQueues
 	{
+		private byte[] lastPacket;
 		private ConcurrentBag<byte[]> pendingPackets;
 		private IMarshal marshal;
 		private IProtocol<PQ> protocol;
@@ -36,7 +37,9 @@ namespace Kaminari
 
 		public void onReceived(byte[] data)
 		{
+			lastPacket = data;
 			pendingPackets.Add(data);
+			protocol.clientHasNewPacket(this, superPacket);
 		}
 
 		public PQ getSender()
@@ -55,6 +58,17 @@ namespace Kaminari
 			if (pendingPackets.TryPeek(out var data))
 			{
 				return (new Buffer(data)).readUshort(2);
+			}
+
+			return 0;
+		}
+
+		public ushort lastSuperPacketId()
+		{
+			// HACK(gpascualg): A big hack here...
+			if (lastPacket != null)
+			{
+				return (new Buffer(lastPacket)).readUshort(2);
 			}
 
 			return 0;

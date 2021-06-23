@@ -38,6 +38,11 @@ namespace Kaminari
             _pendingAcks.Add(blockId);
         }
 
+        public void serverUpdatedId(ushort id)
+        {
+            _id = Math.Max(id, _id);
+        }
+
         public bool finish()
         {
             _buffer.reset();

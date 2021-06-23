@@ -24,6 +24,7 @@ namespace Kaminari
 		private ushort sinceLastRecv;
 		private ushort lastBlockIdRead;
 		private ushort expectedBlockId;
+		private bool serverBasedSync;
 		private byte loopCounter;
 		private ulong timestamp;
 		private ushort timestampBlockId;
@@ -71,6 +72,7 @@ namespace Kaminari
 			sinceLastPing = 0;
 			sinceLastRecv = 0;
 			lastBlockIdRead = 0;
+			serverBasedSync = true;
 			expectedBlockId = 0;
 			loopCounter = 0;
 			timestamp = (ulong)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalMilliseconds; // TODO(gpascualg): Real time without leap seconds
@@ -99,6 +101,20 @@ namespace Kaminari
 		private bool needsPing()
 		{
 			return sinceLastPing >= 20;
+		}
+
+		public void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket)
+		{
+			if (!serverBasedSync)
+			{
+				return;
+			}
+
+			ushort id = client.lastSuperPacketId();
+
+			// Setup current expected ID and superpacket ID
+			expectedBlockId = Math.Max(expectedBlockId, id);
+			superpacket.serverUpdatedId(id);
 		}
 
 		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)

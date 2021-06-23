@@ -8,6 +8,7 @@ namespace Kaminari
 	{
 		bool hasPendingSuperPackets();
 		ushort firstSuperPacketId();
+		ushort lastSuperPacketId();
 		byte[] popPendingSuperPacket();
 
 		void disconnect();
