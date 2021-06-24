@@ -112,6 +112,7 @@ namespace Kaminari
             ushort remaining = (ushort)(500 - _buffer.getPosition() - 1);
 
             // During handshake/resync do not include any packets
+            bool hasData = false;
             if (!HasFlag(SuperPacketFlags.Handshake))
             {
                 // Organize packets that must be resent until ack'ed
@@ -124,7 +125,7 @@ namespace Kaminari
 
                 // Has there been any overflow? That can be detected by, for example
                 //  checking max-min>thr
-                bool hasData = by_block.Count != 0;
+                hasData = by_block.Count != 0;
                 if (hasData)
                 {
                     uint max = by_block.Keys.ToList()[by_block.Count - 1]; // TODO(gpascualg): Linq .Last()?
