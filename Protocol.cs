@@ -157,7 +157,7 @@ namespace Kaminari
 			return true;
 		}
 
-		private void handleAcks(SuperPacket<PQ> superpacket)
+		private void handleAcks(SuperPacketReader<PQ> reader, SuperPacket<PQ> superpacket)
 		{
 			lastBlockIdRead = reader.id();
 
@@ -197,7 +197,7 @@ namespace Kaminari
 				}
 
 				// Either case, skip all processing except acks
-				handleAcks();
+				handleAcks(reader, superpacket);
 				return;
 			}
 
@@ -216,7 +216,7 @@ namespace Kaminari
 				loopCounter = (byte)(loopCounter + 1);
 			}
 
-			handleAcks();
+			handleAcks(reader, superpacket);
 			reader.handlePackets(this, handler, client);
 		}
 
