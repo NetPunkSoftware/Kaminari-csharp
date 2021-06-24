@@ -25,15 +25,15 @@ namespace Kaminari
 			return _buffer.readUshort(2);
 		}
 
-		public ushort timestamp()
+		public bool HasFlag(SuperPacketFlags flag)
 		{
-			return _buffer.readUshort(4);
+			return (_buffer.readByte(4) & (byte)flag) != 0x00;
 		}
 
 		public List<ushort> getAcks()
 		{
 			List<ushort> acks = new List<ushort>();
-			_ackEnd = sizeof(ushort) * 2;
+			_ackEnd = sizeof(ushort) * 2 + sizeof(byte);
 			int numAcks = (int)_buffer.readByte((int)_ackEnd);
 			_hasAcks = numAcks != 0;
 			_ackEnd += sizeof(byte);

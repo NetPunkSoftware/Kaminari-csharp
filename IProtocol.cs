@@ -6,6 +6,7 @@ namespace Kaminari
 {
 	public interface IProtocol<PQ> where PQ : IProtocolQueues
 	{
+		void InitiateHandshake(SuperPacket<PQ> superpacket);
 		void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket);
 		bool read(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler);
 		Buffer update(IBaseClient client, SuperPacket<PQ> superpacket);

@@ -21,6 +21,11 @@ namespace Kaminari
 			this.superPacket = new SuperPacket<PQ>(queues);
 		}
 
+		public void InitiateHandshake()
+		{
+			protocol.InitiateHandshake(this.superPacket);
+		}
+
 		public void updateInputs()
 		{
 			protocol.read(this, superPacket, marshal);

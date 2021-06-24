@@ -75,9 +75,19 @@ namespace Kaminari
 			serverBasedSync = true;
 			expectedBlockId = 0;
 			loopCounter = 0;
-			timestamp = (ulong)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalMilliseconds; // TODO(gpascualg): Real time without leap seconds
+			timestamp = now();
 			timestampBlockId = 0;
 			alreadyResolved = new Dictionary<ushort, ResolvedBlock>();
+		}
+
+		public ulong now()
+		{
+			return (ulong)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalMilliseconds; // TODO(gpascualg): Real time without leap seconds
+		}
+
+		public void InitiateHandshake(SuperPacket<PQ> superpacket)
+		{
+			superPacket.SetFlag(SuperPacketFlags.Handshake);
 		}
 
 		public Buffer update(IBaseClient client, SuperPacket<PQ> superpacket)
@@ -120,7 +130,7 @@ namespace Kaminari
 		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
 		{
 			timestampBlockId = expectedBlockId;
-			timestamp = (ulong)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalMilliseconds;
+			timestamp = now();
 
 			if (!client.hasPendingSuperPackets())
 			{
@@ -147,9 +157,49 @@ namespace Kaminari
 			return true;
 		}
 
+		private void handleAcks(SuperPacket<PQ> superpacket)
+		{
+			lastBlockIdRead = reader.id();
+
+			foreach (ushort ack in reader.getAcks())
+			{
+				superpacket.ack(ack);
+				// TODO(gpascualg): Lag compensation
+			}
+
+			if (reader.hasData() || reader.isPingPacket())
+			{
+				superpacket.scheduleAck(lastBlockIdRead);
+			}
+		}
+
 		public void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
 		{
 			SuperPacketReader<PQ> reader = new SuperPacketReader<PQ>(client.popPendingSuperPacket());
+
+			// Handshake process skips all procedures, including order
+			if (reader.HasFlag(SuperPacketFlags.Handshake))
+			{
+				// Make sure we are ready for the next valid block
+				expectedBlockId = Overflow.inc(reader.id());
+
+				// Reset all variables related to packet parsing
+				timestampBlockId = expectedBlockId;
+				timestamp = now();
+				loopCounter = 0;
+				alreadyResolved.Clear();
+				
+				// Acks have no implication for us, but non-acks mean we have to ack
+				if (!reader.HasFlag(SuperPacketFlags.Ack))
+				{
+					superpacket.SetFlag(SuperPacketFlags.Ack);
+					superpacket.SetFlag(SuperPacketFlags.Handshake);
+				}
+
+				// Either case, skip all processing except acks
+				handleAcks();
+				return;
+			}
 
 			if (Overflow.le(reader.id(), lastBlockIdRead))
 			{
@@ -158,7 +208,7 @@ namespace Kaminari
 
 			if (Overflow.sub(expectedBlockId, reader.id()) > Constants.MaximumBlocksUntilResync)
 			{
-				// TODO(gpascualg): Flag resync
+				superpacket.SetFlag(SuperPacketFlags.Handshake);
 			}
 
 			if (lastBlockIdRead > reader.id())
@@ -166,19 +216,7 @@ namespace Kaminari
 				loopCounter = (byte)(loopCounter + 1);
 			}
 
-			lastBlockIdRead = reader.id();
-
-			foreach (ushort ack in reader.getAcks())
-			{
-				superpacket.getQueues().ack(ack);
-				// TODO(gpascualg): Lag compensation
-			}
-
-			if (reader.hasData() || reader.isPingPacket())
-			{
-				superpacket.scheduleAck(lastBlockIdRead);
-			}
-
+			handleAcks();
 			reader.handlePackets(this, handler, client);
 		}
 
