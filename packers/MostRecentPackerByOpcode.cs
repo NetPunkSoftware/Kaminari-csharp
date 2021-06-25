@@ -5,58 +5,60 @@ using UnityEngine;
 
 namespace Kaminari
 {
-	public class MostRecentPackerWithId : Packer<PacketWithId, IHasId>
+	public class MostRecentPackerByOpcode : Packer<PacketWithOpcode, IData>
 	{
 
 		private uint opcode;
-		private Dictionary<ulong, PendingData<PacketWithId>> idMap = new Dictionary<ulong, PendingData<PacketWithId>>();
+		private Dictionary<ushort, PendingData<PacketWithOpcode>> opcodeMap = new Dictionary<ushort, PendingData<PacketWithOpcode>>();
 
-		public override void onAck(List<PendingData<PacketWithId>> toBeRemoved)
+		public override void onAck(List<PendingData<PacketWithOpcode>> toBeRemoved)
 		{
-			foreach (PendingData<PacketWithId> pending in toBeRemoved)
+			foreach (PendingData<PacketWithOpcode> pending in toBeRemoved)
 			{
-				idMap.Remove(pending.data.id);
+				opcodeMap.Remove(pending.data.opcode);
 			}
 		}
 
 		public override void onClear()
 		{
-			idMap.Clear();
+			opcodeMap.Clear();
 		}
 
 		public override void add(Packet packet)
 		{
-			Debug.Assert(false, "Unsupported operation");
+			add(packet, packet.getOpcode());
 		}
 
-		public override void add(IMarshal marshal, ushort opcode, IHasId data, Action callback)
+		public override void add(IMarshal marshal, ushort opcode, IData data, Action callback)
 		{
-			Debug.Assert(false, "Unsupported operation");
+			Packet packet = Packet.make(opcode, callback);
+			data.pack(marshal, packet);
+			add(packet, opcode);
 		}
 
-		private void add(Packet packet, ulong id)
+		private void add(Packet packet, ushort opcode)
 		{
-			if (idMap.ContainsKey(id))
+			if (opcodeMap.ContainsKey(opcode))
 			{
-				idMap[id].data.packet = packet;
-				idMap[id].blocks.Clear();
+				opcodeMap[opcode].data.packet = packet;
+				opcodeMap[opcode].blocks.Clear();
 			}
 			else
 			{
-				PendingData<PacketWithId> pendingData = new PendingData<PacketWithId>(new PacketWithId(packet, id));
+				PendingData<PacketWithOpcode> pendingData = new PendingData<PacketWithOpcode>(new PacketWithOpcode(packet, opcode));
 				pending.Add(pendingData);
 			}
 		}
 
 		public override void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock)
 		{
-			foreach (PendingData<PacketWithId> pnd in pending)
+			foreach (PendingData<PacketWithOpcode> pnd in pending)
 			{
 				if (!isPending(pnd.blocks, blockId, false))
 				{
 					continue;
 				}
-				Debug.Log("Process packet mostRecent");
+				
 				uint actualBlock = getActualBlock(pnd.blocks, blockId);
 				ushort size = (ushort)pnd.data.packet.getSize();
 

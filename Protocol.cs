@@ -25,6 +25,8 @@ namespace Kaminari
 		private ushort lastBlockIdRead;
 		private ushort expectedBlockId;
 		private bool serverBasedSync;
+		private ushort lastServerID;
+		private int serverTimeDiff;
 		private byte loopCounter;
 		private ulong timestamp;
 		private ushort timestampBlockId;
@@ -43,6 +45,20 @@ namespace Kaminari
 		public ushort getExpectedBlockId()
 		{
 			return this.expectedBlockId;
+		}
+		public ushort getLastReadID()
+		{
+			return lastBlockIdRead;
+		}
+
+		public byte getLoopCounter()
+		{
+			return this.loopCounter;
+		}
+
+		public void setBufferSize(ushort size)
+		{
+			bufferSize = size;
 		}
 
 		public bool isExpected(ushort id)
@@ -73,6 +89,7 @@ namespace Kaminari
 			sinceLastRecv = 0;
 			lastBlockIdRead = 0;
 			serverBasedSync = true;
+			lastServerID = 0;
 			expectedBlockId = 0;
 			loopCounter = 0;
 			timestamp = now();
@@ -87,7 +104,7 @@ namespace Kaminari
 
 		public void InitiateHandshake(SuperPacket<PQ> superpacket)
 		{
-			superPacket.SetFlag(SuperPacketFlags.Handshake);
+			superpacket.SetFlag(SuperPacketFlags.Handshake);
 		}
 
 		public Buffer update(IBaseClient client, SuperPacket<PQ> superpacket)
@@ -115,16 +132,29 @@ namespace Kaminari
 
 		public void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket)
 		{
+			lastServerID = client.lastSuperPacketId();
+
 			if (!serverBasedSync)
 			{
 				return;
 			}
 
-			ushort id = client.lastSuperPacketId();
-
 			// Setup current expected ID and superpacket ID
-			expectedBlockId = Math.Max(expectedBlockId, id);
-			superpacket.serverUpdatedId(id);
+			expectedBlockId = Math.Max(expectedBlockId, (ushort)(lastServerID + 1));
+			superpacket.serverUpdatedId(lastServerID);
+			serverTimeDiff = Math.Max(0, superpacket.getID() - lastServerID);
+
+			// serverTimeDiff = superpacket.getID() - lastServerID;
+		}
+
+		public ushort getLastServerID()
+		{
+			return lastServerID;
+		}
+
+		public int getServerTimeDiff()
+		{
+			return serverTimeDiff;
 		}
 
 		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
@@ -153,7 +183,7 @@ namespace Kaminari
 				read_impl(client, superpacket, handler);
 			}
 
-			expectedBlockId = (ushort)(expectedBlockId + 1);
+			expectedBlockId = Overflow.inc(expectedBlockId);
 			return true;
 		}
 
@@ -163,7 +193,7 @@ namespace Kaminari
 
 			foreach (ushort ack in reader.getAcks())
 			{
-				superpacket.ack(ack);
+				superpacket.Ack(ack);
 				// TODO(gpascualg): Lag compensation
 			}
 

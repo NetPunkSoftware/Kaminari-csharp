@@ -8,5 +8,11 @@ namespace Kaminari
     {
         public Packet packet;
         public ushort opcode;
+
+		public PacketWithOpcode(Packet packet, ushort opcode)
+		{
+			this.packet = packet;
+			this.opcode = opcode;
+		}
     }
 }

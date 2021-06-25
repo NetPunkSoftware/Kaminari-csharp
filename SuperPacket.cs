@@ -28,9 +28,15 @@ namespace Kaminari
             return _buffer;
         }
 
+        public ushort getID()
+        {
+            return _id;
+        }
+
         public SuperPacket(PQ queues)
         {
             _pendingAcks = new List<ushort>();
+            _clearFlagsOnAck = new Dictionary<ushort, byte>();
             _buffer = new Buffer();
             _queues = queues;
             
@@ -54,14 +60,22 @@ namespace Kaminari
             // Protocol level acks
             if (_clearFlagsOnAck.ContainsKey(id))
             {
-                _flags = _flags & (~_clearFlagsOnAck[id]);
+                _flags = (byte)(_flags & (byte)(~_clearFlagsOnAck[id]));
             }
         }
 
         public void SetFlag(SuperPacketFlags flag)
         {
-            _flags = _flags | (byte)flag;
-            _clearFlagsOnAck.Add(_id, _clearFlagsOnAck.GetValueOrDefault(_id) | (byte)flag);
+            _flags = (byte)(_flags | (byte)flag);
+
+            if (_clearFlagsOnAck.ContainsKey(_id))
+            {
+                _clearFlagsOnAck[_id] = (byte)(_clearFlagsOnAck[_id] | (byte)flag);
+            }
+            else
+            {
+                _clearFlagsOnAck.Add(_id, (byte)flag);
+            }
         }
 
         // public void ClearFlag(SuperPacketFlags flag)
@@ -166,7 +180,7 @@ namespace Kaminari
                 }
 
                 // Id only increases outside handshakes
-                ++_id;
+                _id = Overflow.inc(_id);
             }
 
             _buffer.write(0, (byte)_buffer.getPosition());

@@ -49,6 +49,11 @@ namespace Kaminari
             return (ushort)(++x);
         }
 
+        public static ushort inc_max(ushort x, ushort max)
+        {
+            return (ushort)((ushort)(++x) % max);
+        }
+
         public static ushort inc0(ushort x)
         {
             ushort z = inc(x);

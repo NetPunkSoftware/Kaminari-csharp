@@ -1,21 +1,104 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace Kaminari
 {
+	public class DuplicateKeyComparer<TKey> : IComparer<TKey> where TKey : IComparable
+	{
+		public int Compare(TKey x, TKey y)
+		{
+			int result = x.CompareTo(y);
+
+			if (result == 0)
+				return 1; // Handle equality as being greater. Note: this will break Remove(key) or
+			else          // IndexOfKey(key) since the comparer never returns 0 to signal key equality
+				return result;
+		}
+	}
+
+	public class ConcurrentList
+	{
+		protected SortedList<ushort, byte[]> _internalList;
+		protected static object _lock = new object();
+
+		public bool IsEmpty => _internalList.Count == 0;
+
+		public ConcurrentList()
+		{
+			_internalList = new SortedList<ushort, byte[]>(new DuplicateKeyComparer<ushort>());
+		}
+
+		public void Add(byte[] obj)
+		{
+			lock (_lock)
+			{
+				// HACK(gpascualg): A big hack here...
+				ushort id = (new Buffer(obj)).readUshort(2);
+				_internalList.Add(id, obj);
+			}
+		}
+
+		public ushort Peek()
+		{
+			lock (_lock)
+			{
+				if (_internalList.Count > 0)
+				{
+					return _internalList.Keys[0];
+				}
+			}
+
+			return 0;
+		}
+
+		public bool PopFirst(out byte[] obj)
+		{
+			obj = null;
+
+			lock (_lock)
+			{
+				if (_internalList.Count > 0)
+				{
+					obj = _internalList.Values[0];
+					_internalList.RemoveAt(0);
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		public byte[] PopFirstOrNull()
+		{
+			lock (_lock)
+			{
+				if (_internalList.Count > 0)
+				{
+					byte[] obj = _internalList.Values[0];
+					_internalList.RemoveAt(0);
+					return obj;
+				}
+			}
+
+			return null;
+		}
+	}
+
+
 	public abstract class Client<PQ> : IBaseClient where PQ : IProtocolQueues
 	{
 		private byte[] lastPacket;
-		private ConcurrentBag<byte[]> pendingPackets;
+		private ConcurrentList pendingPackets;
 		private IMarshal marshal;
 		private IProtocol<PQ> protocol;
 		private SuperPacket<PQ> superPacket;
 
 		public Client(IMarshal marshal, IProtocol<PQ> protocol, PQ queues)
 		{
-			pendingPackets = new ConcurrentBag<byte[]>();
+			pendingPackets = new ConcurrentList();
 			this.marshal = marshal;
 			this.protocol = protocol;
 			this.superPacket = new SuperPacket<PQ>(queues);
@@ -47,6 +130,16 @@ namespace Kaminari
 			protocol.clientHasNewPacket(this, superPacket);
 		}
 
+		public IProtocol<PQ> getProtocol()
+		{
+			return protocol;
+		}
+
+		public SuperPacket<PQ> getSuperPacket()
+		{
+			return superPacket;
+		}
+
 		public PQ getSender()
 		{
 			return superPacket.getQueues();
@@ -59,13 +152,7 @@ namespace Kaminari
 
 		public ushort firstSuperPacketId()
 		{
-			// HACK(gpascualg): A big hack here...
-			if (pendingPackets.TryPeek(out var data))
-			{
-				return (new Buffer(data)).readUshort(2);
-			}
-
-			return 0;
+			return pendingPackets.Peek();
 		}
 
 		public ushort lastSuperPacketId()
@@ -81,12 +168,7 @@ namespace Kaminari
 
 		public byte[] popPendingSuperPacket()
 		{
-			if (pendingPackets.TryTake(out var data))
-			{
-				return data;
-			}
-
-			return null;
+			return pendingPackets.PopFirstOrNull();
 		}
 
 		// ABSTRACT METHODS LEFT TO IMPLEMENTATION
