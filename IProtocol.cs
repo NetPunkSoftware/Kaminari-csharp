@@ -12,6 +12,8 @@ namespace Kaminari
 		ServerPhaseSync getPhaseSync();
 		int getServerTimeDiff();
 		byte getLoopCounter();
+		ushort getLastSentSuperPacketSize(SuperPacket<PQ> superpacket);
+		ushort getLastRecvSuperPacketSize(IBaseClient client);
 		void setBufferSize(ushort size);
 		void InitiateHandshake(SuperPacket<PQ> superpacket);
 		void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket);

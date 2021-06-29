@@ -202,7 +202,7 @@ namespace Kaminari
                 _id = Overflow.inc(_id);
             }
 
-            _buffer.write(0, (byte)_buffer.getPosition());
+            _buffer.write(0, (ushort)_buffer.getPosition());
             return _flags != 0 || hasAcks || hasData;
         }
     }

@@ -67,6 +67,20 @@ namespace Kaminari
 			return 0;
 		}
 
+		public ushort PeekLastSize()
+		{
+			lock (_lock)
+			{
+				if (_internalList.Count > 0)
+				{
+					byte[] obj = _internalList.Values[_internalList.Count - 1];
+					return (new Buffer(obj)).readUshort(0); // TODO(gpascualg): Moar hacks
+				}
+			}
+
+			return 0;
+		}
+
 		public bool PopFirst(out byte[] obj)
 		{
 			obj = null;
@@ -104,6 +118,7 @@ namespace Kaminari
 	public abstract class Client<PQ> : IBaseClient where PQ : IProtocolQueues
 	{
 		private ushort lastPacketID;
+		private ushort lastPacketSize;
 		private ConcurrentList pendingPackets;
 		private IMarshal marshal;
 		private IProtocol<PQ> protocol;
@@ -140,6 +155,7 @@ namespace Kaminari
 		{
 			pendingPackets.Add(data);
 			lastPacketID = pendingPackets.PeekLast();
+			lastPacketSize = pendingPackets.PeekLastSize();
 			protocol.clientHasNewPacket(this, superPacket);
 		}
 
@@ -171,6 +187,11 @@ namespace Kaminari
 		public ushort lastSuperPacketId()
 		{
 			return lastPacketID;
+		}
+
+		public ushort lastSuperPacketSize()
+		{
+			return lastPacketSize;
 		}
 
 		public byte[] popPendingSuperPacket()

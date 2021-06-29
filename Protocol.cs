@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace Kaminari
 {
@@ -41,12 +40,12 @@ namespace Kaminari
 
 		public ushort getLastBlockIdRead()
 		{
-			return this.lastBlockIdRead;
+			return lastBlockIdRead;
 		}
 
 		public ushort getExpectedBlockId()
 		{
-			return this.expectedBlockId;
+			return expectedBlockId;
 		}
 		public ushort getLastReadID()
 		{
@@ -59,7 +58,16 @@ namespace Kaminari
 
 		public byte getLoopCounter()
 		{
-			return this.loopCounter;
+			return loopCounter;
+		}
+
+		public ushort getLastSentSuperPacketSize(SuperPacket<PQ> superpacket)
+		{
+			return (ushort)superpacket.getBuffer().getPosition();
+		}
+		public ushort getLastRecvSuperPacketSize(IBaseClient client)
+		{
+			return client.lastSuperPacketSize();
 		}
 
 		public void setBufferSize(ushort size)
@@ -214,8 +222,6 @@ namespace Kaminari
 		public void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
 		{
 			SuperPacketReader<PQ> reader = new SuperPacketReader<PQ>(client.popPendingSuperPacket());
-
-			Debug.Log($"READ [{reader.id()} / {superpacket.getID()}] HS: {reader.HasFlag(SuperPacketFlags.Handshake)}, ACK: {reader.HasFlag(SuperPacketFlags.Ack)}, INT: {superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst)}");
 
 			// Handshake process skips all procedures, including order
 			if (reader.HasFlag(SuperPacketFlags.Handshake))

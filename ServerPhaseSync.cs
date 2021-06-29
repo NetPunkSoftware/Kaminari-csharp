@@ -8,14 +8,14 @@ namespace Kaminari
 {
     public class ServerPhaseSync
     {
-        public ulong nextTick;
-        public float integrator;
+        public ulong NextTick { get; private set; }
+        public float Integrator { get; private set; }
+        public float ServerDiff { get; private set; }
 
         private ushort lastPacketID;
         private List<Action> onTick;
         private bool running;
         private bool tickCalled;
-        private float serverDiff;
         private Thread thread;
         public ulong TickTime {
             get; private set;
@@ -23,8 +23,8 @@ namespace Kaminari
 
         public ServerPhaseSync()
         {
-            nextTick = DateTimeExtensions.now() + 50;
-            integrator = 50;
+            NextTick = DateTimeExtensions.now() + 50;
+            Integrator = 50;
             
             onTick = new List<Action>();
 
@@ -46,28 +46,28 @@ namespace Kaminari
 
         public void ServerPacket(ushort packetID, float serverDiff)
         {
-            this.serverDiff = serverDiff;
             // Get current tick time
-            ulong time = TickTime + (ulong)integrator;
+            ServerDiff = serverDiff;
+            ulong time = TickTime + (ulong)Integrator;
         
             // More than one packet in between?
             ushort packetDiff = Overflow.sub(packetID, lastPacketID);
             lastPacketID = packetID;
             if (packetDiff > 1)
             {
-                nextTick += (ulong)(integrator * (packetDiff - 1));
+                NextTick += (ulong)(Integrator * (packetDiff - 1));
             }
 
             // Phase detector
-            float err = (float)((long)time - (long)nextTick);
+            float err = (float)((long)time - (long)NextTick);
 
             // Loop filter
-            // integrator = 0.999f * integrator + err;
+            // Integrator = 0.999f * Integrator + err;
             float Ki = 1e-3f;
-            integrator = Ki * err + integrator;
+            Integrator = Ki * err + Integrator;
         
             // NCO
-            nextTick = time + (ulong)integrator;
+            NextTick = time + (ulong)Integrator;
         }
 
         private void update()
@@ -81,7 +81,7 @@ namespace Kaminari
                 }
 
                 // Wait until next tick, account sever/client diff
-                Thread.Sleep((int)(integrator + serverDiff));
+                Thread.Sleep((int)(Integrator + ServerDiff));
             }
         }
     }
