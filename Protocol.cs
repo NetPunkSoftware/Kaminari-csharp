@@ -31,9 +31,11 @@ namespace Kaminari
 		private ulong timestamp;
 		private ushort timestampBlockId;
 		private Dictionary<ushort, ResolvedBlock> alreadyResolved;
+		private ServerPhaseSync phaseSync;
 
 		public Protocol()
 		{
+			phaseSync = new ServerPhaseSync();
 			Reset();
 		}
 
@@ -49,6 +51,10 @@ namespace Kaminari
 		public ushort getLastReadID()
 		{
 			return lastBlockIdRead;
+		}
+		public ServerPhaseSync getPhaseSync()
+		{
+			return phaseSync;
 		}
 
 		public byte getLoopCounter()
@@ -105,6 +111,7 @@ namespace Kaminari
 		public void InitiateHandshake(SuperPacket<PQ> superpacket)
 		{
 			superpacket.SetFlag(SuperPacketFlags.Handshake);
+			superpacket.SetInternalFlag(SuperPacketInternalFlags.WaitFirst);
 		}
 
 		public Buffer update(IBaseClient client, SuperPacket<PQ> superpacket)
@@ -133,6 +140,7 @@ namespace Kaminari
 		public void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket)
 		{
 			lastServerID = client.lastSuperPacketId();
+			phaseSync.ServerPacket(lastServerID, (float)serverTimeDiff);
 
 			if (!serverBasedSync)
 			{
@@ -140,11 +148,11 @@ namespace Kaminari
 			}
 
 			// Setup current expected ID and superpacket ID
-			expectedBlockId = Math.Max(expectedBlockId, (ushort)(lastServerID + 1));
-			superpacket.serverUpdatedId(lastServerID);
-			serverTimeDiff = Math.Max(0, superpacket.getID() - lastServerID);
+			// expectedBlockId = Math.Max(expectedBlockId, (ushort)(lastServerID + 1));
+			// superpacket.serverUpdatedId(lastServerID);
+			serverTimeDiff = superpacket.getID() - lastServerID;
 
-			// serverTimeDiff = superpacket.getID() - lastServerID;
+			// serverTimeDiff = Math.Max(0, superpacket.getID() - lastServerID);
 		}
 
 		public ushort getLastServerID()
@@ -207,6 +215,8 @@ namespace Kaminari
 		{
 			SuperPacketReader<PQ> reader = new SuperPacketReader<PQ>(client.popPendingSuperPacket());
 
+			Debug.Log($"READ [{reader.id()} / {superpacket.getID()}] HS: {reader.HasFlag(SuperPacketFlags.Handshake)}, ACK: {reader.HasFlag(SuperPacketFlags.Ack)}, INT: {superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst)}");
+
 			// Handshake process skips all procedures, including order
 			if (reader.HasFlag(SuperPacketFlags.Handshake))
 			{
@@ -229,6 +239,10 @@ namespace Kaminari
 				// Either case, skip all processing except acks
 				handleAcks(reader, superpacket);
 				return;
+			}
+			else
+			{
+				superpacket.ClearInternalFlag(SuperPacketInternalFlags.WaitFirst);
 			}
 
 			if (Overflow.le(reader.id(), lastBlockIdRead))

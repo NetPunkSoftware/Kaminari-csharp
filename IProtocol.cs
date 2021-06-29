@@ -9,6 +9,7 @@ namespace Kaminari
 		ushort getLastServerID();
 		ushort getExpectedBlockId();
 		ushort getLastReadID();
+		ServerPhaseSync getPhaseSync();
 		int getServerTimeDiff();
 		byte getLoopCounter();
 		void setBufferSize(ushort size);

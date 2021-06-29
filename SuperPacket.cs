@@ -14,10 +14,18 @@ namespace Kaminari
         All         = 0xFF
     }
 
+    public enum SuperPacketInternalFlags
+    {
+        None        = 0x00,
+        WaitFirst   = 0x01,
+        All         = 0xFF
+    }
+
     public class SuperPacket<PQ> where PQ : IProtocolQueues
     {
         public ushort _id;
         private byte _flags;
+        private byte _internalFlags;
         private List<ushort> _pendingAcks;
         private Dictionary<ushort, byte> _clearFlagsOnAck;
         private Buffer _buffer;
@@ -47,6 +55,7 @@ namespace Kaminari
         {
             _id = 0;
             _flags = 0;
+            _internalFlags = 0;
             _pendingAcks.Clear();
             _buffer.reset();
             _queues.reset();
@@ -78,14 +87,24 @@ namespace Kaminari
             }
         }
 
-        // public void ClearFlag(SuperPacketFlags flag)
-        // {
-        //     _flags = _flags & (~(byte)flag);
-        // }
+        public void SetInternalFlag(SuperPacketInternalFlags flag)
+        {
+            _internalFlags = (byte)(_internalFlags | (byte)flag);
+        }
+
+        public void ClearInternalFlag(SuperPacketInternalFlags flag)
+        {
+            _internalFlags = (byte)(_internalFlags & (~(byte)flag));
+        }
 
         public bool HasFlag(SuperPacketFlags flag)
         {
             return (_flags & (byte)flag) != 0x00;
+        }
+
+        public bool HasInternalFlag(SuperPacketInternalFlags flag)
+        {
+            return (_internalFlags & (byte)flag) != 0x00;
         }
 
         public PQ getQueues()
@@ -127,7 +146,7 @@ namespace Kaminari
 
             // During handshake/resync do not include any packets
             bool hasData = false;
-            if (!HasFlag(SuperPacketFlags.Handshake))
+            if (!HasFlag(SuperPacketFlags.Handshake) && !HasInternalFlag(SuperPacketInternalFlags.WaitFirst))
             {
                 // Organize packets that must be resent until ack'ed
                 SortedDictionary<uint, List<Packet>> by_block = new SortedDictionary<uint, List<Packet>>();
