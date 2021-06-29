@@ -20,6 +20,7 @@ namespace Kaminari
 
 		private ushort bufferSize;
 		private ushort sinceLastPing;
+		private float estimatedRTT;
 		private ushort sinceLastRecv;
 		private ushort lastBlockIdRead;
 		private ushort expectedBlockId;
@@ -31,6 +32,7 @@ namespace Kaminari
 		private ushort timestampBlockId;
 		private Dictionary<ushort, ResolvedBlock> alreadyResolved;
 		private ServerPhaseSync phaseSync;
+		private Dictionary<ushort, ulong> packetTimes;
 
 		public Protocol()
 		{
@@ -59,6 +61,11 @@ namespace Kaminari
 		public byte getLoopCounter()
 		{
 			return loopCounter;
+		}
+
+		public float getEstimatedRTT()
+		{
+			return estimatedRTT;
 		}
 
 		public ushort getLastSentSuperPacketSize(SuperPacket<PQ> superpacket)
@@ -100,20 +107,17 @@ namespace Kaminari
 		{
 			bufferSize = 0;
 			sinceLastPing = 0;
+			estimatedRTT = 50;
 			sinceLastRecv = 0;
 			lastBlockIdRead = 0;
 			serverBasedSync = true;
 			lastServerID = 0;
 			expectedBlockId = 0;
 			loopCounter = 0;
-			timestamp = now();
+			timestamp = DateTimeExtensions.now();
 			timestampBlockId = 0;
 			alreadyResolved = new Dictionary<ushort, ResolvedBlock>();
-		}
-
-		public ulong now()
-		{
-			return (ulong)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalMilliseconds; // TODO(gpascualg): Real time without leap seconds
+			packetTimes = new Dictionary<ushort, ulong>();
 		}
 
 		public void InitiateHandshake(SuperPacket<PQ> superpacket)
@@ -134,7 +138,16 @@ namespace Kaminari
 					sinceLastPing = 0;
 				}
 
-				return new Buffer(superpacket.getBuffer());
+				Buffer buffer = new Buffer(superpacket.getBuffer());
+
+				// Register time for ping purposes
+				if (!superpacket.HasFlag(SuperPacketFlags.Handshake) && 
+					!superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst))
+				{
+					packetTimes.Add(buffer.readUshort(2), DateTimeExtensions.now());
+				}
+
+				return buffer;
 			}
 
 			return null;
@@ -176,7 +189,7 @@ namespace Kaminari
 		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
 		{
 			timestampBlockId = expectedBlockId;
-			timestamp = now();
+			timestamp = DateTimeExtensions.now();
 
 			if (!client.hasPendingSuperPackets())
 			{
@@ -210,7 +223,16 @@ namespace Kaminari
 			foreach (ushort ack in reader.getAcks())
 			{
 				superpacket.Ack(ack);
-				// TODO(gpascualg): Lag compensation
+				
+				if (!superpacket.HasFlag(SuperPacketFlags.Handshake) && 
+					!superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst) && 
+					packetTimes.ContainsKey(ack))
+				{
+					const float w = 0.9f;
+					ulong diff = DateTimeExtensions.now() - packetTimes[ack];
+					packetTimes.Remove(ack);
+					estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
+				}
 			}
 
 			if (reader.hasData() || reader.isPingPacket())
@@ -231,7 +253,7 @@ namespace Kaminari
 
 				// Reset all variables related to packet parsing
 				timestampBlockId = expectedBlockId;
-				timestamp = now();
+				timestamp = DateTimeExtensions.now();
 				loopCounter = 0;
 				alreadyResolved.Clear();
 				
