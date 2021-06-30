@@ -13,6 +13,8 @@ namespace Kaminari
 		int getServerTimeDiff();
 		byte getLoopCounter();
 		float getEstimatedRTT();
+		float RecvKbpsEstimate();
+		float SendKbpsEstimate();
 		ushort getLastSentSuperPacketSize(SuperPacket<PQ> superpacket);
 		ushort getLastRecvSuperPacketSize(IBaseClient client);
 		void setBufferSize(ushort size);

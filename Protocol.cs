@@ -30,6 +30,12 @@ namespace Kaminari
 		private byte loopCounter;
 		private ulong timestamp;
 		private ushort timestampBlockId;
+		private float recvKbpsEstimate;
+		private float recvKbpsEstimateAcc;
+		private ulong recvKbpsEstimateTime;
+		private float sendKbpsEstimate;
+		private float sendKbpsEstimateAcc;
+		private ulong sendKbpsEstimateTime;
 		private Dictionary<ushort, ResolvedBlock> alreadyResolved;
 		private ServerPhaseSync<PQ> phaseSync;
 		private Dictionary<ushort, ulong> packetTimes;
@@ -77,6 +83,32 @@ namespace Kaminari
 			return client.lastSuperPacketSize();
 		}
 
+		public float RecvKbpsEstimate()
+		{
+			if (DateTimeExtensions.now() - recvKbpsEstimateTime > 1000.0f)
+			{
+				recvKbpsEstimate += recvKbpsEstimateAcc / ((DateTimeExtensions.now() - recvKbpsEstimateTime) / 1000.0f);
+				recvKbpsEstimate /= 2.0f;
+				recvKbpsEstimateAcc = 0;
+				recvKbpsEstimateTime = DateTimeExtensions.now();
+			}
+
+			return recvKbpsEstimate / 1024;
+		}
+
+		public float SendKbpsEstimate()
+		{
+			if (DateTimeExtensions.now() - sendKbpsEstimateTime > 1000.0f)
+			{
+				sendKbpsEstimate += sendKbpsEstimateAcc / ((DateTimeExtensions.now() - sendKbpsEstimateTime) / 1000.0f);
+				sendKbpsEstimate /= 2.0f;
+				sendKbpsEstimateAcc = 0;
+				sendKbpsEstimateTime = DateTimeExtensions.now();
+			}
+
+			return sendKbpsEstimate / 1024;
+		}
+
 		public void setBufferSize(ushort size)
 		{
 			bufferSize = size;
@@ -116,6 +148,12 @@ namespace Kaminari
 			loopCounter = 0;
 			timestamp = DateTimeExtensions.now();
 			timestampBlockId = 0;
+			recvKbpsEstimate = 0;
+			recvKbpsEstimateAcc = 0;
+			recvKbpsEstimateTime = DateTimeExtensions.now();
+			sendKbpsEstimate = 0;
+			sendKbpsEstimateAcc = 0;
+			sendKbpsEstimateTime = DateTimeExtensions.now();
 			alreadyResolved = new Dictionary<ushort, ResolvedBlock>();
 			packetTimes = new Dictionary<ushort, ulong>();
 		}
@@ -147,6 +185,9 @@ namespace Kaminari
 					packetTimes.Add(buffer.readUshort(2), DateTimeExtensions.now());
 				}
 
+				// Update estimate
+				sendKbpsEstimateAcc += buffer.getPosition();
+
 				return buffer;
 			}
 
@@ -160,8 +201,12 @@ namespace Kaminari
 
 		public void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket)
 		{
+			// Update PLL
 			lastServerID = client.lastSuperPacketId();
 			phaseSync.ServerPacket(lastServerID);
+
+			// Save estimate
+			recvKbpsEstimateAcc += client.lastSuperPacketSize();
 
 			if (!serverBasedSync)
 			{
