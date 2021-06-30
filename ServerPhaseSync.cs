@@ -6,12 +6,12 @@ using System.Threading;
 
 namespace Kaminari
 {
-    public class ServerPhaseSync
+    public class ServerPhaseSync<PQ> where PQ : IProtocolQueues
     {
         public ulong NextTick { get; private set; }
         public float Integrator { get; private set; }
-        public float ServerDiff { get; private set; }
 
+        private Protocol<PQ> protocol;
         private ushort lastPacketID;
         private List<Action> onTick;
         private bool running;
@@ -21,13 +21,17 @@ namespace Kaminari
             get; private set;
         }
 
-        public ServerPhaseSync()
+        public ServerPhaseSync(Protocol<PQ> protocol)
         {
+            // Base values
             NextTick = DateTimeExtensions.now() + 50;
             Integrator = 50;
+            this.protocol = protocol;
             
+            // No actions yet
             onTick = new List<Action>();
 
+            // Start
             running = true;
             thread = new Thread(update);
             thread.Start();
@@ -44,10 +48,9 @@ namespace Kaminari
             onTick.Add(action);
         }
 
-        public void ServerPacket(ushort packetID, float serverDiff)
+        public void ServerPacket(ushort packetID)
         {
             // Get current tick time
-            ServerDiff = serverDiff;
             ulong time = TickTime + (ulong)Integrator;
         
             // More than one packet in between?
@@ -81,7 +84,7 @@ namespace Kaminari
                 }
 
                 // Wait until next tick, account sever/client diff
-                Thread.Sleep((int)(Integrator + ServerDiff));
+                Thread.Sleep((int)(Integrator + (float)protocol.getServerTimeDiff()));
             }
         }
     }

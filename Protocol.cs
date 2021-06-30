@@ -31,12 +31,12 @@ namespace Kaminari
 		private ulong timestamp;
 		private ushort timestampBlockId;
 		private Dictionary<ushort, ResolvedBlock> alreadyResolved;
-		private ServerPhaseSync phaseSync;
+		private ServerPhaseSync<PQ> phaseSync;
 		private Dictionary<ushort, ulong> packetTimes;
 
 		public Protocol()
 		{
-			phaseSync = new ServerPhaseSync();
+			phaseSync = new ServerPhaseSync<PQ>(this);
 			Reset();
 		}
 
@@ -53,7 +53,7 @@ namespace Kaminari
 		{
 			return lastBlockIdRead;
 		}
-		public ServerPhaseSync getPhaseSync()
+		public ServerPhaseSync<PQ> getPhaseSync()
 		{
 			return phaseSync;
 		}
@@ -161,7 +161,7 @@ namespace Kaminari
 		public void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket)
 		{
 			lastServerID = client.lastSuperPacketId();
-			phaseSync.ServerPacket(lastServerID, (float)serverTimeDiff);
+			phaseSync.ServerPacket(lastServerID);
 
 			if (!serverBasedSync)
 			{
