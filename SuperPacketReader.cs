@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace Kaminari
 {
-	public class SuperPacketReader<PQ> where PQ : IProtocolQueues
+	public class SuperPacketReader
 	{
 		private Buffer _buffer;
 		private uint _ackEnd;
@@ -58,7 +58,7 @@ namespace Kaminari
 			return !_hasAcks && !hasData();
 		}
 
-		public void handlePackets<T>(Protocol<PQ> protocol, IHandlePacket handler, T client) where T : IBaseClient
+		public void handlePackets<PQ, T>(Protocol<PQ> protocol, IHandlePacket handler, T client) where PQ : IProtocolQueues where T : IBaseClient
 		{
 			int numBlocks = (int)_buffer.readByte((int)_ackEnd);
 			int blockPos = (int)_ackEnd + sizeof(byte);

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+
 
 namespace Kaminari
 {
@@ -199,7 +201,7 @@ namespace Kaminari
 			return sinceLastPing >= 20;
 		}
 
-		public void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket)
+		public void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket, SuperPacketReader reader)
 		{
 			// Update PLL
 			lastServerID = client.lastSuperPacketId();
@@ -261,10 +263,8 @@ namespace Kaminari
 			return true;
 		}
 
-		private void handleAcks(SuperPacketReader<PQ> reader, SuperPacket<PQ> superpacket)
+		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket)
 		{
-			lastBlockIdRead = reader.id();
-
 			foreach (ushort ack in reader.getAcks())
 			{
 				superpacket.Ack(ack);
@@ -282,13 +282,13 @@ namespace Kaminari
 
 			if (reader.hasData() || reader.isPingPacket())
 			{
-				superpacket.scheduleAck(lastBlockIdRead);
+				superpacket.scheduleAck(reader.id());
 			}
 		}
 
-		public void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
+		private void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
 		{
-			SuperPacketReader<PQ> reader = new SuperPacketReader<PQ>(client.popPendingSuperPacket());
+			SuperPacketReader reader = client.popPendingSuperPacket();
 
 			// Handshake process skips all procedures, including order
 			if (reader.HasFlag(SuperPacketFlags.Handshake))
@@ -309,8 +309,8 @@ namespace Kaminari
 					superpacket.SetFlag(SuperPacketFlags.Handshake);
 				}
 
-				// Either case, skip all processing except acks
-				handleAcks(reader, superpacket);
+				// Either case, skip all processing
+				lastBlockIdRead = reader.id();
 				return;
 			}
 			else
@@ -318,11 +318,8 @@ namespace Kaminari
 				superpacket.ClearInternalFlag(SuperPacketInternalFlags.WaitFirst);
 			}
 
-			if (Overflow.le(reader.id(), lastBlockIdRead))
-			{
-				return;
-			}
-
+			Debug.Assert(!IsOutOfOrder(reader.id()), "Should never have out of order packets");
+			
 			if (Overflow.sub(expectedBlockId, reader.id()) > Constants.MaximumBlocksUntilResync)
 			{
 				superpacket.SetFlag(SuperPacketFlags.Handshake);
@@ -333,8 +330,13 @@ namespace Kaminari
 				loopCounter = (byte)(loopCounter + 1);
 			}
 
-			handleAcks(reader, superpacket);
-			reader.handlePackets(this, handler, client);
+			lastBlockIdRead = reader.id();
+			reader.handlePackets<PQ, IBaseClient>(this, handler, client);
+		}
+
+		public bool IsOutOfOrder(ushort id)
+		{
+			return Overflow.le(id, lastBlockIdRead);
 		}
 
 		public bool resolve(PacketReader packet, ushort blockId)

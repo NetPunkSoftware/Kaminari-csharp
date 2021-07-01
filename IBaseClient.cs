@@ -10,7 +10,7 @@ namespace Kaminari
 		ushort firstSuperPacketId();
 		ushort lastSuperPacketId();
 		ushort lastSuperPacketSize();
-		byte[] popPendingSuperPacket();
+		SuperPacketReader popPendingSuperPacket();
 
 		void disconnect();
 		void handlingError();

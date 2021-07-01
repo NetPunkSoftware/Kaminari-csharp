@@ -6,9 +6,9 @@ using System.Collections.Generic;
 
 namespace Kaminari
 {
-	public class DuplicateKeyComparer<TKey> : IComparer<TKey> where TKey : IComparable
+	public class DuplicateKeyComparer : IComparer<ushort>
 	{
-		public int Compare(TKey x, TKey y)
+		public int Compare(ushort x, ushort y)
 		{
 			int result = x.CompareTo(y);
 
@@ -21,23 +21,21 @@ namespace Kaminari
 
 	public class ConcurrentList
 	{
-		protected SortedList<ushort, byte[]> _internalList;
+		protected SortedList<ushort, SuperPacketReader> _internalList;
 		protected static object _lock = new object();
 
 		public bool IsEmpty => _internalList.Count == 0;
 
 		public ConcurrentList()
 		{
-			_internalList = new SortedList<ushort, byte[]>(new DuplicateKeyComparer<ushort>());
+			_internalList = new SortedList<ushort, SuperPacketReader>(new DuplicateKeyComparer());
 		}
 
-		public void Add(byte[] obj)
+		public void Add(SuperPacketReader reader)
 		{
 			lock (_lock)
 			{
-				// HACK(gpascualg): A big hack here...
-				ushort id = (new Buffer(obj)).readUshort(2);
-				_internalList.Add(id, obj);
+				_internalList.Add(reader.id(), reader);
 			}
 		}
 
@@ -73,23 +71,23 @@ namespace Kaminari
 			{
 				if (_internalList.Count > 0)
 				{
-					byte[] obj = _internalList.Values[_internalList.Count - 1];
-					return (new Buffer(obj)).readUshort(0); // TODO(gpascualg): Moar hacks
+					SuperPacketReader reader = _internalList.Values[_internalList.Count - 1];
+					return reader.length();
 				}
 			}
 
 			return 0;
 		}
 
-		public bool PopFirst(out byte[] obj)
+		public bool PopFirst(out SuperPacketReader reader)
 		{
-			obj = null;
+			reader = null;
 
 			lock (_lock)
 			{
 				if (_internalList.Count > 0)
 				{
-					obj = _internalList.Values[0];
+					reader = _internalList.Values[0];
 					_internalList.RemoveAt(0);
 					return true;
 				}
@@ -98,15 +96,15 @@ namespace Kaminari
 			return false;
 		}
 
-		public byte[] PopFirstOrNull()
+		public SuperPacketReader PopFirstOrNull()
 		{
 			lock (_lock)
 			{
 				if (_internalList.Count > 0)
 				{
-					byte[] obj = _internalList.Values[0];
+					SuperPacketReader reader = _internalList.Values[0];
 					_internalList.RemoveAt(0);
-					return obj;
+					return reader;
 				}
 			}
 
@@ -153,10 +151,20 @@ namespace Kaminari
 
 		public void onReceived(byte[] data)
 		{
-			pendingPackets.Add(data);
-			lastPacketID = pendingPackets.PeekLast();
-			lastPacketSize = pendingPackets.PeekLastSize();
-			protocol.clientHasNewPacket(this, superPacket);
+			SuperPacketReader reader = new SuperPacketReader(data);
+			if (protocol.IsOutOfOrder(reader.id()))
+			{
+				return;
+			}
+
+			// Handle all acks already
+			protocol.HandleAcks(reader, superPacket);
+
+			// Add to pending list
+			pendingPackets.Add(reader);
+			lastPacketID = reader.id();
+			lastPacketSize = reader.length();
+			protocol.clientHasNewPacket(this, superPacket, reader);
 		}
 
 		public IProtocol<PQ> getProtocol()
@@ -194,7 +202,7 @@ namespace Kaminari
 			return lastPacketSize;
 		}
 
-		public byte[] popPendingSuperPacket()
+		public SuperPacketReader popPendingSuperPacket()
 		{
 			return pendingPackets.PopFirstOrNull();
 		}
