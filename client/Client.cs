@@ -157,14 +157,13 @@ namespace Kaminari
 				return;
 			}
 
-			// Handle all acks already
-			protocol.HandleAcks(reader, superPacket);
-
 			// Add to pending list
 			pendingPackets.Add(reader);
 			lastPacketID = reader.id();
 			lastPacketSize = reader.length();
-			protocol.clientHasNewPacket(this, superPacket, reader);
+
+			// Handle all acks already
+			protocol.HandleAcks(reader, superPacket);
 		}
 
 		public IProtocol<PQ> getProtocol()

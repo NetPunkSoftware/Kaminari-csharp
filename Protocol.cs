@@ -38,6 +38,8 @@ namespace Kaminari
 		private float sendKbpsEstimate;
 		private float sendKbpsEstimateAcc;
 		private ulong sendKbpsEstimateTime;
+		private ushort lastRecvSize;
+		private ushort lastSendSize;
 		private Dictionary<ushort, ResolvedBlock> alreadyResolved;
 		private ServerPhaseSync<PQ> phaseSync;
 		private Dictionary<ushort, ulong> packetTimes;
@@ -78,11 +80,11 @@ namespace Kaminari
 
 		public ushort getLastSentSuperPacketSize(SuperPacket<PQ> superpacket)
 		{
-			return (ushort)superpacket.getBuffer().getPosition();
+			return lastSendSize;
 		}
 		public ushort getLastRecvSuperPacketSize(IBaseClient client)
 		{
-			return client.lastSuperPacketSize();
+			return lastRecvSize;
 		}
 
 		public float RecvKbpsEstimate()
@@ -189,38 +191,18 @@ namespace Kaminari
 
 				// Update estimate
 				sendKbpsEstimateAcc += buffer.getPosition();
+				lastSendSize = (ushort)buffer.getPosition();
 
 				return buffer;
 			}
 
+			lastSendSize = 0;
 			return null;
 		}
 
 		private bool needsPing()
 		{
 			return sinceLastPing >= 20;
-		}
-
-		public void clientHasNewPacket(IBaseClient client, SuperPacket<PQ> superpacket, SuperPacketReader reader)
-		{
-			// Update PLL
-			lastServerID = client.lastSuperPacketId();
-			phaseSync.ServerPacket(lastServerID);
-
-			// Save estimate
-			recvKbpsEstimateAcc += client.lastSuperPacketSize();
-
-			if (!serverBasedSync)
-			{
-				return;
-			}
-
-			// Setup current expected ID and superpacket ID
-			// expectedBlockId = Math.Max(expectedBlockId, (ushort)(lastServerID + 1));
-			// superpacket.serverUpdatedId(lastServerID);
-			serverTimeDiff = superpacket.getID() - lastServerID;
-
-			// serverTimeDiff = Math.Max(0, superpacket.getID() - lastServerID);
 		}
 
 		public ushort getLastServerID()
@@ -233,6 +215,14 @@ namespace Kaminari
 			return serverTimeDiff;
 		}
 
+		private void increaseExpectedBlock(SuperPacket<PQ> superpacket)
+		{
+			if (!superpacket.HasFlag(SuperPacketFlags.Handshake) && !superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst))
+			{
+				expectedBlockId = Overflow.inc(expectedBlockId);
+			}
+		}
+
 		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
 		{
 			timestampBlockId = expectedBlockId;
@@ -240,13 +230,14 @@ namespace Kaminari
 
 			if (!client.hasPendingSuperPackets())
 			{
-				expectedBlockId = (ushort)(expectedBlockId + 1);
+				increaseExpectedBlock(superpacket);
 
 				if (++sinceLastRecv >= Constants.MaxBlocksUntilDisconnection)
 				{
 					client.disconnect();
 				}
 
+				lastRecvSize = 0;
 				return false;
 			}
 
@@ -259,7 +250,7 @@ namespace Kaminari
 				read_impl(client, superpacket, handler);
 			}
 
-			expectedBlockId = Overflow.inc(expectedBlockId);
+			increaseExpectedBlock(superpacket);
 			return true;
 		}
 
@@ -298,6 +289,30 @@ namespace Kaminari
 			{
 				superpacket.scheduleAck(reader.id());
 			}
+
+			// Update PLL
+			lastServerID = Math.Max(lastServerID, reader.id());
+			phaseSync.ServerPacket(lastServerID);
+
+			// Save estimate
+			recvKbpsEstimateAcc += reader.length();
+			lastRecvSize = reader.length();
+
+			if (!serverBasedSync)
+			{
+				return;
+			}
+
+			// Setup current expected ID and superpacket ID
+			// expectedBlockId = Math.Max(expectedBlockId, (ushort)(lastServerID + 1));
+			// superpacket.serverUpdatedId(lastServerID);
+
+			// serverTimeDiff = expectedBlockId - lastServerID + superpacket.getID() - lastServerID;
+			// serverTimeDiff = superpacket.getID() - lastServerID;
+			// serverTimeDiff = Math.Max(0, superpacket.getID() - lastServerID);
+
+			expectedBlockId = lastServerID;
+			serverTimeDiff = superpacket.getID() - lastServerID - (int)(estimatedRTT / 2.0f / 50.0f);
 		}
 
 		private void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)

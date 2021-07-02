@@ -13,7 +13,9 @@ namespace Kaminari
 
         private Protocol<PQ> protocol;
         private ushort lastPacketID;
+        private List<Action> onEarlyTick;
         private List<Action> onTick;
+        private List<Action> onLateTick;
         private bool running;
         private bool tickCalled;
         private Thread thread;
@@ -29,7 +31,9 @@ namespace Kaminari
             this.protocol = protocol;
             
             // No actions yet
+            onEarlyTick = new List<Action>();
             onTick = new List<Action>();
+            onLateTick = new List<Action>();
 
             // Start
             running = true;
@@ -43,9 +47,20 @@ namespace Kaminari
             thread.Join();
         }
 
+        public void RegisterEarlyTickCallback(Action action)
+        {
+            onEarlyTick.Add(action);
+        }
+
+
         public void RegisterTickCallback(Action action)
         {
             onTick.Add(action);
+        }
+
+        public void RegisterLateTickCallback(Action action)
+        {
+            onLateTick.Add(action);
         }
 
         public void ServerPacket(ushort packetID)
@@ -78,7 +93,18 @@ namespace Kaminari
             while (running)
             {
                 TickTime = DateTimeExtensions.now();
+
+                foreach (var action in onEarlyTick)
+                {
+                    action();
+                }
+
                 foreach (var action in onTick)
+                {
+                    action();
+                }
+
+                foreach (var action in onLateTick)
                 {
                     action();
                 }
