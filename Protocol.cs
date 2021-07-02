@@ -265,6 +265,20 @@ namespace Kaminari
 
 		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket)
 		{
+			// Handle flags already
+			if (reader.HasFlag(SuperPacketFlags.Handshake))
+			{
+				if (!reader.HasFlag(SuperPacketFlags.Ack))
+				{
+					superpacket.SetFlag(SuperPacketFlags.Ack);
+					superpacket.SetFlag(SuperPacketFlags.Handshake);
+				}
+			}
+			else
+			{
+				superpacket.ClearInternalFlag(SuperPacketInternalFlags.WaitFirst);
+			}
+
 			foreach (ushort ack in reader.getAcks())
 			{
 				superpacket.Ack(ack);
@@ -301,21 +315,10 @@ namespace Kaminari
 				timestamp = DateTimeExtensions.now();
 				loopCounter = 0;
 				alreadyResolved.Clear();
-				
-				// Acks have no implication for us, but non-acks mean we have to ack
-				if (!reader.HasFlag(SuperPacketFlags.Ack))
-				{
-					superpacket.SetFlag(SuperPacketFlags.Ack);
-					superpacket.SetFlag(SuperPacketFlags.Handshake);
-				}
 
 				// Either case, skip all processing
 				lastBlockIdRead = reader.id();
 				return;
-			}
-			else
-			{
-				superpacket.ClearInternalFlag(SuperPacketInternalFlags.WaitFirst);
 			}
 
 			Debug.Assert(!IsOutOfOrder(reader.id()), "Should never have out of order packets");
