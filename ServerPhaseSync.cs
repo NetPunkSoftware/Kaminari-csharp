@@ -10,9 +10,11 @@ namespace Kaminari
     {
         public ulong NextTick { get; private set; }
         public float Integrator { get; private set; }
+        public float AdjustedIntegrator => Integrator + (float)protocol.getServerTimeDiff();
 
         private Protocol<PQ> protocol;
         private ushort lastPacketID;
+        private ConcurrentQueue<Action> oneShot;
         private List<Action> onEarlyTick;
         private List<Action> onTick;
         private List<Action> onLateTick;
@@ -31,6 +33,7 @@ namespace Kaminari
             this.protocol = protocol;
             
             // No actions yet
+            oneShot = new ConcurrentQueue<Action>();
             onEarlyTick = new List<Action>();
             onTick = new List<Action>();
             onLateTick = new List<Action>();
@@ -45,6 +48,11 @@ namespace Kaminari
         {
             running = false;
             thread.Join();
+        }
+
+        public void OneShot(Action action)
+        {
+            oneShot.Enqueue(action);
         }
 
         public void RegisterEarlyTickCallback(Action action)
@@ -104,13 +112,18 @@ namespace Kaminari
                     action();
                 }
 
+                while (oneShot.TryDequeue(out var action))
+                {
+                    action();
+                }
+
                 foreach (var action in onLateTick)
                 {
                     action();
                 }
 
                 // Wait until next tick, account sever/client diff
-                Thread.Sleep((int)(Integrator + (float)protocol.getServerTimeDiff()));
+                Thread.Sleep((int)AdjustedIntegrator);
             }
         }
     }
