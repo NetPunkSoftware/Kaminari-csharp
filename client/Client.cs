@@ -115,6 +115,9 @@ namespace Kaminari
 
 	public abstract class Client<PQ> : IBaseClient where PQ : IProtocolQueues
 	{
+		private Random random;
+		public float PctSimulatedRecvDrop { get; set; }
+		public float PctSimulatedSendDrop { get; set; }
 		private ushort lastPacketID;
 		private ushort lastPacketSize;
 		private ConcurrentList pendingPackets;
@@ -124,10 +127,26 @@ namespace Kaminari
 
 		public Client(IMarshal marshal, IProtocol<PQ> protocol, PQ queues)
 		{
+			// Drop simulation
+			random = new Random();
+			PctSimulatedRecvDrop = 0;
+			PctSimulatedSendDrop = 0;
+
+			// Other
 			pendingPackets = new ConcurrentList();
 			this.marshal = marshal;
 			this.protocol = protocol;
 			this.superPacket = new SuperPacket<PQ>(queues);
+		}
+
+		public bool DropSend()
+		{
+			return random.NextDouble() < PctSimulatedSendDrop;
+		}
+
+		public bool DropRecv()
+		{
+			return random.NextDouble() < PctSimulatedRecvDrop;
 		}
 
 		public void InitiateHandshake()
@@ -143,7 +162,7 @@ namespace Kaminari
 		public void updateOutputs()
 		{
 			Buffer buffer = protocol.update(this, superPacket);
-			if (buffer != null)
+			if (buffer != null && !DropSend())
 			{
 				send(buffer);
 			}
@@ -151,6 +170,11 @@ namespace Kaminari
 
 		public void onReceived(byte[] data)
 		{
+			if (DropRecv())
+			{
+				return;
+			}
+
 			SuperPacketReader reader = new SuperPacketReader(data);
 			if (protocol.IsOutOfOrder(reader.id()))
 			{
