@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 
@@ -42,7 +43,7 @@ namespace Kaminari
 		private ushort lastSendSize;
 		private Dictionary<ushort, ResolvedBlock> alreadyResolved;
 		private ServerPhaseSync<PQ> phaseSync;
-		private Dictionary<ushort, ulong> packetTimes;
+		private ConcurrentDictionary<ushort, ulong> packetTimes;
 
 		public Protocol()
 		{
@@ -159,7 +160,7 @@ namespace Kaminari
 			sendKbpsEstimateAcc = 0;
 			sendKbpsEstimateTime = DateTimeExtensions.now();
 			alreadyResolved = new Dictionary<ushort, ResolvedBlock>();
-			packetTimes = new Dictionary<ushort, ulong>();
+			packetTimes = new ConcurrentDictionary<ushort, ulong>();
 		}
 
 		public void InitiateHandshake(SuperPacket<PQ> superpacket)
@@ -186,7 +187,7 @@ namespace Kaminari
 				if (!superpacket.HasFlag(SuperPacketFlags.Handshake) && 
 					!superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst))
 				{
-					packetTimes.Add(buffer.readUshort(2), DateTimeExtensions.now());
+					packetTimes.AddOrUpdate(buffer.readUshort(2), DateTimeExtensions.now(), (key, old) => DateTimeExtensions.now());
 				}
 
 				// Update estimate
@@ -254,40 +255,21 @@ namespace Kaminari
 			return true;
 		}
 
-		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket)
+		public void HandleServerTick(SuperPacketReader reader, SuperPacket<PQ> superpacket)
 		{
-			// Handle flags already
-			if (reader.HasFlag(SuperPacketFlags.Handshake))
+			if (!superpacket.HasFlag(SuperPacketFlags.Handshake) && 
+				!superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst))
 			{
-				if (!reader.HasFlag(SuperPacketFlags.Ack))
+				// Update lag estimation
+				foreach (ushort ack in reader.getAcks())
 				{
-					superpacket.SetFlag(SuperPacketFlags.Ack);
-					superpacket.SetFlag(SuperPacketFlags.Handshake);
+					if (packetTimes.TryRemove(ack, out var timestamp))
+					{
+						const float w = 0.9f;
+						ulong diff = DateTimeExtensions.now() - timestamp;
+						estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
+					}
 				}
-			}
-			else
-			{
-				superpacket.ClearInternalFlag(SuperPacketInternalFlags.WaitFirst);
-			}
-
-			foreach (ushort ack in reader.getAcks())
-			{
-				superpacket.Ack(ack);
-				
-				if (!superpacket.HasFlag(SuperPacketFlags.Handshake) && 
-					!superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst) && 
-					packetTimes.ContainsKey(ack))
-				{
-					const float w = 0.9f;
-					ulong diff = DateTimeExtensions.now() - packetTimes[ack];
-					packetTimes.Remove(ack);
-					estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
-				}
-			}
-
-			if (reader.hasData() || reader.isPingPacket())
-			{
-				superpacket.scheduleAck(reader.id());
 			}
 
 			// Update PLL
@@ -313,6 +295,35 @@ namespace Kaminari
 
 			expectedBlockId = lastServerID;
 			serverTimeDiff = superpacket.getID() - lastServerID - (int)(estimatedRTT / 2.0f / 50.0f);
+		}
+
+		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket)
+		{
+			// Handle flags already
+			if (reader.HasFlag(SuperPacketFlags.Handshake))
+			{
+				if (!reader.HasFlag(SuperPacketFlags.Ack))
+				{
+					superpacket.SetFlag(SuperPacketFlags.Ack);
+					superpacket.SetFlag(SuperPacketFlags.Handshake);
+				}
+			}
+			else
+			{
+				superpacket.ClearInternalFlag(SuperPacketInternalFlags.WaitFirst);
+			}
+
+			// Ack packets
+			foreach (ushort ack in reader.getAcks())
+			{
+				superpacket.Ack(ack);
+			}
+
+			// Schedule ack if necessary
+			if (reader.hasData() || reader.isPingPacket())
+			{
+				superpacket.scheduleAck(reader.id());
+			}
 		}
 
 		private void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)

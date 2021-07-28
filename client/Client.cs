@@ -168,14 +168,27 @@ namespace Kaminari
 			}
 		}
 
-		public void onReceived(byte[] data)
+		public void onReceivedUnsafe(byte[] data)
+		{
+			SuperPacketReader reader = new SuperPacketReader(data);
+			protocol.HandleServerTick(reader, superPacket);
+        	onReceivedImpl(reader);
+		}
+
+		public void onReceivedSafe(byte[] data)
+		{
+			SuperPacketReader reader = new SuperPacketReader(data);
+			protocol.HandleServerTick(reader, superPacket);
+        	protocol.getPhaseSync().EarlyOneShot(() => onReceivedImpl(reader));
+		}
+
+		private void onReceivedImpl(SuperPacketReader reader)
 		{
 			if (DropRecv())
 			{
 				return;
 			}
 
-			SuperPacketReader reader = new SuperPacketReader(data);
 			if (protocol.IsOutOfOrder(reader.id()))
 			{
 				return;

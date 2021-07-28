@@ -19,6 +19,7 @@ namespace Kaminari
 		ushort getLastRecvSuperPacketSize(IBaseClient client);
 		void setBufferSize(ushort size);
 		void InitiateHandshake(SuperPacket<PQ> superpacket);
+		void HandleServerTick(SuperPacketReader reader, SuperPacket<PQ> superpacket);
 		void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket);
 		bool read(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler);
 		bool IsOutOfOrder(ushort id);
