@@ -10,7 +10,7 @@ namespace Kaminari
     {
         public ulong NextTick { get; private set; }
         public float Integrator { get; private set; }
-        public float AdjustedIntegrator => Integrator + (float)protocol.getServerTimeDiff() + protocol.getEstimatedRTT() / 2.0f;
+        public float AdjustedIntegrator => Integrator + (float)protocol.getServerTimeDiff();
 
         private Protocol<PQ> protocol;
         private ushort lastPacketID;

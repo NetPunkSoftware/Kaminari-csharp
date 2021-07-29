@@ -10,6 +10,7 @@ namespace Kaminari
     {
         None        = 0x00,
         Handshake   = 0x01,
+        Ping        = 0x02,
         Ack         = 0x80,
         All         = 0xFF
     }
@@ -26,7 +27,9 @@ namespace Kaminari
         public ushort _id;
         private byte _flags;
         private byte _internalFlags;
-        private List<ushort> _pendingAcks;
+        private ushort _ackBase;
+        private uint _pendingAcks;
+        private bool _mustAck;
         private Dictionary<ushort, byte> _clearFlagsOnAck;
         private Buffer _buffer;
         private PQ _queues;
@@ -43,7 +46,9 @@ namespace Kaminari
 
         public SuperPacket(PQ queues)
         {
-            _pendingAcks = new List<ushort>();
+            _ackBase = 0;
+            _pendingAcks = 0;
+            _mustAck = false;
             _clearFlagsOnAck = new Dictionary<ushort, byte>();
             _buffer = new Buffer();
             _queues = queues;
@@ -56,7 +61,9 @@ namespace Kaminari
             _id = 0;
             _flags = 0;
             _internalFlags = 0;
-            _pendingAcks.Clear();
+            _ackBase = 0;
+            _pendingAcks = 0;
+            _mustAck = false;
             _buffer.reset();
             _queues.reset();
         }
@@ -70,6 +77,7 @@ namespace Kaminari
             if (_clearFlagsOnAck.ContainsKey(id))
             {
                 _flags = (byte)(_flags & (byte)(~_clearFlagsOnAck[id]));
+                _clearFlagsOnAck.Remove(id);
             }
         }
 
@@ -114,7 +122,19 @@ namespace Kaminari
 
         public void scheduleAck(ushort blockId)
         {
-            _pendingAcks.Add(blockId);
+            if (Overflow.ge(blockId, _ackBase))
+            {
+                ushort ackDiff = Overflow.sub(blockId, _ackBase);
+                _pendingAcks = (_pendingAcks << ackDiff) | 1; // | 1 because we are acking the base
+                _ackBase = blockId;
+            }
+            else
+            {
+                ushort ackDiff = Overflow.sub(_ackBase, blockId);
+                _pendingAcks = _pendingAcks | (ushort)(1 << ackDiff);
+            }
+
+            _mustAck = true;
         }
 
         public void serverUpdatedId(ushort id)
@@ -131,15 +151,14 @@ namespace Kaminari
             _buffer.write(_id);
             _buffer.write(_flags);
 
-            _buffer.write((byte)_pendingAcks.Count);
-            bool hasAcks = _pendingAcks.Count > 0;
-            foreach (ushort ack in _pendingAcks)
-            {
-                _buffer.write(ack);
-            }
+            // Reset if there is something we must ack
+            bool hasAcks = _mustAck;
+            _mustAck = false;
 
-            // Clear acks
-            _pendingAcks.Clear();
+            // Write acks and move for next id
+            // Moving acks bitset only happens if no doing handshake (ie. if incrementing id)
+            _buffer.write(_ackBase);
+            _buffer.write(_pendingAcks);
 
             //  -1 is to account for the number of blocks
             ushort remaining = (ushort)(500 - _buffer.getPosition() - 1);
@@ -198,7 +217,7 @@ namespace Kaminari
                     }
                 }
 
-                // Id only increases outside handshakes
+                // Increment _id for next iter and acks
                 _id = Overflow.inc(_id);
             }
 

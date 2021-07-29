@@ -172,15 +172,15 @@ namespace Kaminari
 		public Buffer update(IBaseClient client, SuperPacket<PQ> superpacket)
 		{
 			++sinceLastPing;
+			if (needsPing())
+			{
+				sinceLastPing = 0;
+				superpacket.SetFlag(SuperPacketFlags.Ping);
+			}
 
 			// TODO(gpascualg): Lock superpacket
-			if (superpacket.finish() || needsPing())
+			if (superpacket.finish())
 			{
-				if (needsPing())
-				{
-					sinceLastPing = 0;
-				}
-
 				Buffer buffer = new Buffer(superpacket.getBuffer());
 
 				// Register time for ping purposes
@@ -265,7 +265,7 @@ namespace Kaminari
 				{
 					if (packetTimes.TryRemove(ack, out var timestamp))
 					{
-						const float w = 0.9f;
+						const float w = 0.99f;
 						ulong diff = DateTimeExtensions.now() - timestamp;
 						estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
 					}
@@ -300,7 +300,8 @@ namespace Kaminari
 		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket)
 		{
 			// Handle flags already
-			if (reader.HasFlag(SuperPacketFlags.Handshake))
+			bool is_handshake = reader.HasFlag(SuperPacketFlags.Handshake);
+			if (is_handshake)
 			{
 				if (!reader.HasFlag(SuperPacketFlags.Ack))
 				{
@@ -320,7 +321,7 @@ namespace Kaminari
 			}
 
 			// Schedule ack if necessary
-			if (reader.hasData() || reader.isPingPacket())
+			if (is_handshake || reader.hasData() || reader.isPingPacket())
 			{
 				superpacket.scheduleAck(reader.id());
 			}

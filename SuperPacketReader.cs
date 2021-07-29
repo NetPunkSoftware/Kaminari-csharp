@@ -7,8 +7,6 @@ namespace Kaminari
 	public class SuperPacketReader
 	{
 		private Buffer _buffer;
-		private uint _ackEnd;
-		private bool _hasAcks;
 
 		public SuperPacketReader(byte[] data)
 		{
@@ -32,36 +30,42 @@ namespace Kaminari
 
 		public List<ushort> getAcks()
 		{
-			List<ushort> acks = new List<ushort>();
-			_ackEnd = sizeof(ushort) * 2 + sizeof(byte);
-			int numAcks = (int)_buffer.readByte((int)_ackEnd);
-			_hasAcks = numAcks != 0;
-			_ackEnd += sizeof(byte);
+			List<ushort> acksList = new List<ushort>();
+			int offset = sizeof(ushort) * 2 + sizeof(byte);
+			ushort ackBase = _buffer.readUshort(offset);
+			uint acks = _buffer.readUint(offset + sizeof(ushort));
 
-			for (int i = 0; i < numAcks; ++i)
+			if (acks > 0)
 			{
-				ushort ack = _buffer.readUshort((int)_ackEnd);
-				acks.Add(ack);
-				_ackEnd += sizeof(ushort);
+				// Check previous IDs
+				for (ushort i = 0; i < 32; ++i)
+				{
+					if ((acks & (uint)(1 << i)) > 0)
+					{
+						acksList.Add((ushort)(ackBase - i));
+					}
+				}
 			}
 
-			return acks;
+			return acksList;
 		}
 
 		public bool hasData()
 		{
-			return _buffer.readByte((int)_ackEnd) != 0;
+        	int offset = sizeof(ushort) * 2 + sizeof(byte) + sizeof(ushort) + sizeof(uint);
+			return _buffer.readByte(offset) != 0;
 		}
 
 		public bool isPingPacket()
 		{
-			return !_hasAcks && !hasData();
+			return HasFlag(SuperPacketFlags.Ping) && !HasFlag(SuperPacketFlags.Ack);
 		}
 
 		public void handlePackets<PQ, T>(Protocol<PQ> protocol, IHandlePacket handler, T client) where PQ : IProtocolQueues where T : IBaseClient
 		{
-			int numBlocks = (int)_buffer.readByte((int)_ackEnd);
-			int blockPos = (int)_ackEnd + sizeof(byte);
+			int offset = sizeof(ushort) * 2 + sizeof(byte) + sizeof(ushort) + sizeof(uint);
+			int numBlocks = (int)_buffer.readByte((int)offset);
+			int blockPos = (int)offset + sizeof(byte);
 
 			int remaining = 500 - blockPos;
 			for (int i = 0; i < numBlocks; ++i)
