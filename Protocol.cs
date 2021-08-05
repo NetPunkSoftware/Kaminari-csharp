@@ -294,7 +294,7 @@ namespace Kaminari
 			// serverTimeDiff = Math.Max(0, superpacket.getID() - lastServerID);
 
 			expectedBlockId = lastServerID;
-			serverTimeDiff = superpacket.getID() - lastServerID - (int)(estimatedRTT / 2.0f / 50.0f);
+			serverTimeDiff = superpacket.getID() - lastServerID; //- (int)(estimatedRTT / 2.0f);
 		}
 
 		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket)
