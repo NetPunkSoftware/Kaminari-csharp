@@ -11,5 +11,8 @@ namespace Kaminari
         public static ushort MaximumBlocksUntilResync = 200;
         public static ushort MaxBlocksUntilDisconnection = 300;
         public static ushort ResendThreshold = (ushort)(250 / WorldHeartBeat);
+
+        // TODO(gpascualg): Can we make this a compile time switch?
+        public static bool UseKumoQueues = true;
     }
 }

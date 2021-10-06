@@ -224,7 +224,7 @@ namespace Kaminari
 			}
 		}
 
-		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
+		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IMarshal marshal)
 		{
 			timestampBlockId = expectedBlockId;
 			timestamp = DateTimeExtensions.now();
@@ -239,19 +239,25 @@ namespace Kaminari
 				}
 
 				lastRecvSize = 0;
+				marshal.Update(client, expectedBlockId);
 				return false;
 			}
 
 			sinceLastRecv = 0;
-			ushort expectedId = Overflow.sub(expectedBlockId, bufferSize);
+			ushort expectedId = expectedBlockId;
+			if (Constants.UseKumoQueues)
+			{
+				expectedBlockId = Overflow.sub(expectedBlockId, bufferSize);
+			}
 
 			while (client.hasPendingSuperPackets() &&
 					!Overflow.geq(client.firstSuperPacketId(), expectedId))
 			{
-				read_impl(client, superpacket, handler);
+				read_impl(client, superpacket, marshal);
 			}
 
 			increaseExpectedBlock(superpacket);
+			marshal.Update(client, expectedBlockId);
 			return true;
 		}
 
@@ -327,7 +333,7 @@ namespace Kaminari
 			}
 		}
 
-		private void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IHandlePacket handler)
+		private void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IMarshal marshal)
 		{
 			SuperPacketReader reader = client.popPendingSuperPacket();
 
@@ -361,11 +367,16 @@ namespace Kaminari
 			}
 
 			lastBlockIdRead = reader.id();
-			reader.handlePackets<PQ, IBaseClient>(this, handler, client);
+			reader.handlePackets<PQ, IBaseClient>(this, marshal, client);
 		}
 
 		public bool IsOutOfOrder(ushort id)
 		{
+			if (Constants.UseKumoQueues)
+			{
+				return Overflow.leq(id, expectedBlockId) && Overflow.ge(id, Overflow.sub(expectedBlockId, bufferSize));
+			}
+
 			return Overflow.le(id, lastBlockIdRead);
 		}
 
