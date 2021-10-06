@@ -95,7 +95,7 @@ namespace Kaminari
 
 					if (protocol.resolve(packet, blockId))
 					{
-						if (!handler.handlePacket(packet, client))
+						if (!handler.handlePacket(packet, client, blockId))
 						{
 							client.handlingError();
 						}
