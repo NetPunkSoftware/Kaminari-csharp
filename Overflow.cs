@@ -13,6 +13,12 @@ namespace Kaminari
                 (x < y && (y - x) < threshold) ||  // Standard case, 200 < 255 && (255 - 200) < thr
                 (x > y && (x - y) > threshold);    // Overflow case, 255 > 1 && (255 - 1) > thr
         }
+        public static bool leq(ushort x, ushort y, ushort threshold = ushort.MaxValue / 2)
+        {
+            return
+                (x <= y && (y - x) < threshold) ||  // Standard case, 200 < 255 && (255 - 200) < thr
+                (x > y && (x - y) > threshold);    // Overflow case, 255 > 1 && (255 - 1) > thr
+        }
 
         public static bool ge(ushort x, ushort y, ushort threshold = ushort.MaxValue / 2)
         {
@@ -32,6 +38,13 @@ namespace Kaminari
         {
             return
                 (x < y && (y - x) < threshold) ||  // Standard case, 200 < 255 && (255 - 200) < thr
+                (x > y && (x - y) > threshold);    // Overflow case, 255 > 1 && (255 - 1) > thr
+        }
+        
+        public static bool leq(byte x, byte y, byte threshold = byte.MaxValue / 2)
+        {
+            return
+                (x <= y && (y - x) < threshold) ||  // Standard case, 200 < 255 && (255 - 200) < thr
                 (x > y && (x - y) > threshold);    // Overflow case, 255 > 1 && (255 - 1) > thr
         }
 

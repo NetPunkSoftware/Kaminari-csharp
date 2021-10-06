@@ -245,13 +245,13 @@ namespace Kaminari
 
 			sinceLastRecv = 0;
 			ushort expectedId = expectedBlockId;
-			if (Constants.UseKumoQueues)
+			if (!Constants.UseKumoQueues)
 			{
 				expectedBlockId = Overflow.sub(expectedBlockId, bufferSize);
 			}
 
 			while (client.hasPendingSuperPackets() &&
-					!Overflow.geq(client.firstSuperPacketId(), expectedId))
+					!Overflow.ge(client.firstSuperPacketId(), expectedId))
 			{
 				read_impl(client, superpacket, marshal);
 			}
@@ -374,7 +374,7 @@ namespace Kaminari
 		{
 			if (Constants.UseKumoQueues)
 			{
-				return Overflow.leq(id, expectedBlockId) && Overflow.ge(id, Overflow.sub(expectedBlockId, bufferSize));
+				return Overflow.le(id, Overflow.sub(lastBlockIdRead, bufferSize));
 			}
 
 			return Overflow.le(id, lastBlockIdRead);
