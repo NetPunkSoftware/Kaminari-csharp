@@ -29,7 +29,7 @@ namespace Kaminari
 		private ushort expectedBlockId;
 		private bool serverBasedSync;
 		private ushort lastServerID;
-		private int serverTimeDiff;
+		private float serverTimeDiff;
 		private byte loopCounter;
 		private ulong timestamp;
 		private ushort timestampBlockId;
@@ -211,7 +211,7 @@ namespace Kaminari
 			return lastServerID;
 		}
 
-		public int getServerTimeDiff()
+		public float getServerTimeDiff()
 		{
 			return serverTimeDiff;
 		}
@@ -300,7 +300,7 @@ namespace Kaminari
 			// serverTimeDiff = Math.Max(0, superpacket.getID() - lastServerID);
 
 			expectedBlockId = lastServerID;
-			serverTimeDiff = superpacket.getID() - lastServerID; //- (int)(estimatedRTT / 2.0f);
+			serverTimeDiff = superpacket.getID() - lastServerID - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
 		}
 
 		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket)
@@ -313,6 +313,7 @@ namespace Kaminari
 				{
 					superpacket.SetFlag(SuperPacketFlags.Ack);
 					superpacket.SetFlag(SuperPacketFlags.Handshake);
+					superpacket.SetInternalFlag(SuperPacketInternalFlags.WaitFirst);
 				}
 			}
 			else

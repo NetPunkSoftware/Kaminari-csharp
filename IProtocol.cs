@@ -10,7 +10,7 @@ namespace Kaminari
 		ushort getExpectedBlockId();
 		ushort getLastReadID();
 		ServerPhaseSync<PQ> getPhaseSync();
-		int getServerTimeDiff();
+		float getServerTimeDiff();
 		byte getLoopCounter();
 		float getEstimatedRTT();
 		float RecvKbpsEstimate();
