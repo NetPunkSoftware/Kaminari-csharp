@@ -208,6 +208,11 @@ namespace Kaminari
 			return protocol;
 		}
 
+		public IMarshal getMarshal()
+		{
+			return marshal;
+		}
+
 		public SuperPacket<PQ> getSuperPacket()
 		{
 			return superPacket;

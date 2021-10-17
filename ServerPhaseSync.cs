@@ -138,7 +138,7 @@ namespace Kaminari
                 }
 
                 // Wait until next tick, account sever/client diff
-                Thread.Sleep((int)AdjustedIntegrator);
+                Thread.Sleep((int)Math.Max(1.01f, AdjustedIntegrator));
             }
         }
     }
