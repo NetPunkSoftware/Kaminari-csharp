@@ -67,7 +67,7 @@ namespace Kaminari
 			_index += sizeof(byte);
 		}
 
-		public void write(char value)
+		public void write(sbyte value)
 		{
 			write(_index, (byte)value);
 			_index += sizeof(byte);
@@ -179,9 +179,9 @@ namespace Kaminari
 			}
 		}
 
-		public char readChar()
+		public sbyte readSbyte()
 		{
-			return (char)readByte(_index++);
+			return (sbyte)readByte(_index++);
 		}
 
 		public byte readByte()

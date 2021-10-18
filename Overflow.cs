@@ -82,6 +82,10 @@ namespace Kaminari
         {
             return (ushort)(++x);
         }
+        public static byte inc(byte x)
+        {
+            return (byte)(++x);
+        }
 
         public static ushort inc_max(ushort x, ushort max)
         {
