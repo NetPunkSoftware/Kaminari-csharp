@@ -279,7 +279,7 @@ namespace Kaminari
 			}
 
 			// Update PLL
-			lastServerID = Math.Max(lastServerID, reader.id());
+			lastServerID = Overflow.max(lastServerID, reader.id());
 			phaseSync.ServerPacket(lastServerID);
 
 			// Save estimate
@@ -300,7 +300,9 @@ namespace Kaminari
 			// serverTimeDiff = Math.Max(0, superpacket.getID() - lastServerID);
 
 			expectedBlockId = lastServerID;
-			serverTimeDiff = superpacket.getID() - lastServerID - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
+			int idDiff = Overflow.abs_diff(superpacket.getID(), lastServerID);
+			int sign = Overflow.ge(superpacket.getID(), lastServerID) ? 1 : -1;
+			serverTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
 		}
 
 		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket)

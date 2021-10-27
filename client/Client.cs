@@ -10,12 +10,18 @@ namespace Kaminari
 	{
 		public int Compare(ushort x, ushort y)
 		{
-			int result = x.CompareTo(y);
+			// Handle equality as x > y
+			if (x == y)
+			{
+				return 1;
+			}
 
-			if (result == 0)
-				return 1; // Handle equality as being greater. Note: this will break Remove(key) or
-			else          // IndexOfKey(key) since the comparer never returns 0 to signal key equality
-				return result;
+			if (Overflow.le(x, y))
+            {
+				return -1;
+            }
+
+			return 1;
 		}
 	}
 
