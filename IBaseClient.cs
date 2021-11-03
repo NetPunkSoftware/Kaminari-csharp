@@ -8,6 +8,7 @@ namespace Kaminari
 	{
 		bool hasPendingSuperPackets();
 		ushort firstSuperPacketId();
+		ushort firstSuperPacketTickId();
 		ushort lastSuperPacketId();
 		ushort lastSuperPacketSize();
 		SuperPacketReader popPendingSuperPacket();

@@ -58,6 +58,21 @@ namespace Kaminari
 			return 0;
 		}
 
+		public bool PeekFirst(out SuperPacketReader reader)
+		{
+			reader = null;
+			lock (_lock)
+			{
+				if (_internalList.Count > 0)
+				{
+					reader = _internalList.Values[0];
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		public ushort PeekLast()
 		{
 			lock (_lock)
@@ -65,20 +80,6 @@ namespace Kaminari
 				if (_internalList.Count > 0)
 				{
 					return _internalList.Keys[_internalList.Count - 1];
-				}
-			}
-
-			return 0;
-		}
-
-		public ushort PeekLastSize()
-		{
-			lock (_lock)
-			{
-				if (_internalList.Count > 0)
-				{
-					SuperPacketReader reader = _internalList.Values[_internalList.Count - 1];
-					return reader.length();
 				}
 			}
 
@@ -167,23 +168,23 @@ namespace Kaminari
 
 		public void updateOutputs()
 		{
-			Buffer buffer = protocol.update(this, superPacket);
+			Buffer buffer = protocol.update(protocol.getPhaseSync().TickId, this, superPacket);
 			if (buffer != null && !DropSend())
 			{
 				send(buffer);
 			}
 		}
 
-		public void onReceivedUnsafe(byte[] data)
+		public void onReceivedUnsafe(byte[] data, int size)
 		{
-			SuperPacketReader reader = new SuperPacketReader(data);
+			SuperPacketReader reader = new SuperPacketReader(data, size);
 			protocol.HandleServerTick(reader, superPacket);
         	onReceivedImpl(reader);
 		}
 
-		public void onReceivedSafe(byte[] data)
+		public void onReceivedSafe(byte[] data, int size)
 		{
-			SuperPacketReader reader = new SuperPacketReader(data);
+			SuperPacketReader reader = new SuperPacketReader(data, size);
 			protocol.HandleServerTick(reader, superPacket);
         	protocol.getPhaseSync().EarlyOneShot(() => onReceivedImpl(reader));
 		}
@@ -195,18 +196,20 @@ namespace Kaminari
 				return;
 			}
 
-			if (protocol.IsOutOfOrder(reader.id()))
+			if (protocol.IsOutOfOrder(reader.tickId()))
 			{
 				return;
 			}
 
+			UnityEngine.Debug.Log($"RECEIVED PACKET {reader.tickId()} SIZE {reader.size()}");
+
 			// Add to pending list
 			pendingPackets.Add(reader);
 			lastPacketID = reader.id();
-			lastPacketSize = reader.length();
+			lastPacketSize = reader.size();
 
 			// Handle all acks already
-			protocol.HandleAcks(reader, superPacket);
+			protocol.HandleAcks(reader, superPacket, marshal);
 		}
 
 		public IProtocol<PQ> getProtocol()
@@ -237,6 +240,15 @@ namespace Kaminari
 		public ushort firstSuperPacketId()
 		{
 			return pendingPackets.Peek();
+		}
+
+		public ushort firstSuperPacketTickId()
+		{
+			if (pendingPackets.PeekFirst(out var reader))
+            {
+				return reader.tickId();
+            }
+			return 0;
 		}
 
 		public ushort lastSuperPacketId()

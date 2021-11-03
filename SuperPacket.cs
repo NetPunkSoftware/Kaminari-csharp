@@ -24,6 +24,8 @@ namespace Kaminari
 
     public class SuperPacket<PQ> where PQ : IProtocolQueues
     {
+        public const ushort MAX_SIZE = 512;
+
         public ushort _id;
         private byte _flags;
         private byte _internalFlags;
@@ -31,6 +33,7 @@ namespace Kaminari
         private uint _pendingAcks;
         private bool _mustAck;
         private Dictionary<ushort, byte> _clearFlagsOnAck;
+        private Dictionary<ushort, byte> _opcode_counter;
         private Buffer _buffer;
         private PQ _queues;
 
@@ -50,7 +53,8 @@ namespace Kaminari
             _pendingAcks = 0;
             _mustAck = false;
             _clearFlagsOnAck = new Dictionary<ushort, byte>();
-            _buffer = new Buffer();
+            _opcode_counter = new Dictionary<ushort, byte>();
+            _buffer = new Buffer(MAX_SIZE);
             _queues = queues;
             
             reset();
@@ -137,17 +141,17 @@ namespace Kaminari
             _mustAck = true;
         }
 
-        public void serverUpdatedId(ushort id)
+        public void prepare()
         {
-            _id = Math.Max(id, _id);
+            _opcode_counter.Clear();
         }
 
-        public bool finish()
+        public bool finish(ushort tickId, bool isFirst)
         {
             _buffer.reset();
 
             //  First two bytes are size, next two id, finally 1 byte for flags
-            _buffer.write((short)0);
+            _buffer.write(tickId);
             _buffer.write(_id);
             _buffer.write(_flags);
 
@@ -161,11 +165,11 @@ namespace Kaminari
             _buffer.write(_pendingAcks);
 
             //  -1 is to account for the number of blocks
-            ushort remaining = (ushort)(500 - _buffer.getPosition() - 1);
+            ushort remaining = (ushort)(MAX_SIZE - _buffer.getPosition() - 1);
 
             // During handshake/resync do not include any packets
             bool hasData = false;
-            if (!HasFlag(SuperPacketFlags.Handshake) && !HasInternalFlag(SuperPacketInternalFlags.WaitFirst))
+            if (!HasFlag(SuperPacketFlags.Handshake))
             {
                 // Organize packets that must be resent until ack'ed
                 SortedDictionary<uint, List<Packet>> by_block = new SortedDictionary<uint, List<Packet>>();
@@ -197,8 +201,6 @@ namespace Kaminari
                         by_block.Remove(key);
                     }
 
-                    byte counter = 0;
-
                     // Write in packets
                     foreach (var entry in by_block)
                     {
@@ -209,20 +211,24 @@ namespace Kaminari
                         {
                             if (entry.Key == _id)
                             {
-                                packet.finish(counter++);
+                                if (!_opcode_counter.ContainsKey(packet.getOpcode()))
+                                {
+                                    _opcode_counter.Add(packet.getOpcode(), 0);
+                                }
+                                
+                                packet.finish(_opcode_counter[packet.getOpcode()]++);
                             }
 
                             _buffer.write(packet);
                         }
                     }
                 }
-
-                // Increment _id for next iter and acks
-                _id = Overflow.inc(_id);
             }
 
-            _buffer.write(0, (ushort)_buffer.getPosition());
-            return _flags != 0 || hasAcks || hasData;
+            // Increment _id for next iter and acks
+            _id = Overflow.inc(_id);
+
+            return hasAcks || hasData || (isFirst && _flags != 0);
         }
     }
 }

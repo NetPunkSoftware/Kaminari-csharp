@@ -15,14 +15,15 @@ namespace Kaminari
 		float getEstimatedRTT();
 		float RecvKbpsEstimate();
 		float SendKbpsEstimate();
-		ushort getLastSentSuperPacketSize(SuperPacket<PQ> superpacket);
-		ushort getLastRecvSuperPacketSize(IBaseClient client);
+		uint getLastSentSuperPacketSize(SuperPacket<PQ> superpacket);
+		uint getLastRecvSuperPacketSize();
+		float getPerTickSize();
 		void setBufferSize(ushort size);
 		void InitiateHandshake(SuperPacket<PQ> superpacket);
 		void HandleServerTick(SuperPacketReader reader, SuperPacket<PQ> superpacket);
-		void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket);
+		void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket, IMarshal marshal);
 		bool read(IBaseClient client, SuperPacket<PQ> superpacket, IMarshal handler);
 		bool IsOutOfOrder(ushort id);
-		Buffer update(IBaseClient client, SuperPacket<PQ> superpacket);
+		Buffer update(ushort tickId, IBaseClient client, SuperPacket<PQ> superpacket);
 	}
 }

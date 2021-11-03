@@ -7,13 +7,15 @@ namespace Kaminari
 	public class SuperPacketReader
 	{
 		private Buffer _buffer;
+		private int _size;
 
-		public SuperPacketReader(byte[] data)
+		public SuperPacketReader(byte[] data, int size)
 		{
 			_buffer = new Buffer(data);
+			_size = size;
 		}
 
-		public ushort length()
+		public ushort tickId()
 		{
 			return _buffer.readUshort(0);
 		}
@@ -22,6 +24,11 @@ namespace Kaminari
 		{
 			return _buffer.readUshort(2);
 		}
+
+		public ushort size()
+        {
+			return (ushort)_size;
+        }
 
 		public bool HasFlag(SuperPacketFlags flag)
 		{
@@ -61,7 +68,7 @@ namespace Kaminari
 			return HasFlag(SuperPacketFlags.Ping) && !HasFlag(SuperPacketFlags.Ack);
 		}
 
-		public void handlePackets<PQ, T>(Protocol<PQ> protocol, IHandlePacket handler, T client) where PQ : IProtocolQueues where T : IBaseClient
+		public void handlePackets<PQ, T>(Protocol<PQ> protocol, IMarshal marshal, T client) where PQ : IProtocolQueues where T : IBaseClient
 		{
 			int offset = sizeof(ushort) * 2 + sizeof(byte) + sizeof(ushort) + sizeof(uint);
 			int numBlocks = (int)_buffer.readByte((int)offset);
@@ -83,23 +90,35 @@ namespace Kaminari
 
 				for (int j = 0; j < numPackets && remaining > 0; ++j)
 				{
-					PacketReader packet = new PacketReader(new Buffer(_buffer, blockPos, Packet.dataStart), blockTimestamp);
-					int length = packet.getLength();
-					blockPos += length;
-					remaining -= length;
-
-					if (length < Packet.dataStart || remaining < 0)
-					{
-						return;
-					}
-
+					PacketReader packet = new PacketReader(new Buffer(_buffer, blockPos, Packet.DataStart), blockTimestamp);
 					if (protocol.resolve(packet, blockId))
 					{
-						if (!handler.handlePacket(packet, client, blockId))
+						switch (marshal.handlePacket(packet, client, blockId))
 						{
-							client.handlingError();
+							case MarshalParseState.ParsingFailed:
+								UnityEngine.Debug.LogError($"Packet not valid at {blockId}: {packet.getOpcode():X}/{packet.getCounter()} [{packet.getExtendedId():X}]");
+								client.handlingError();
+								return;
+
+							case MarshalParseState.ParsingDone:
+								blockPos += packet.bytesRead();
+								remaining -= packet.bytesRead();
+								break;
+
+							case MarshalParseState.ParsingSkipped:
+								var size = Packet.DataStart + marshal.PacketSize(packet);
+								blockPos += size;
+								remaining -= size;
+								break;
 						}
 					}
+                    else
+                    {
+						UnityEngine.Debug.LogWarning($"Already resolved at {blockId}: {packet.getOpcode():X}/{packet.getCounter()} [{packet.getExtendedId():X}]");
+						var size = Packet.DataStart + marshal.PacketSize(packet);
+						blockPos += size;
+						remaining -= size;
+                    }
 				}
 			}
 		}

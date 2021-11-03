@@ -22,13 +22,13 @@ namespace Kaminari
         private bool running;
         private bool tickCalled;
         private Thread thread;
-        public ulong TickTime {
-            get; private set;
-        }
+        public ushort TickId { get; private set; }
+        public ulong TickTime { get; private set; }
 
         public ServerPhaseSync(Protocol<PQ> protocol)
         {
             // Base values
+            TickId = 0;
             NextTick = DateTimeExtensions.now() + 50;
             Integrator = 50;
             this.protocol = protocol;
@@ -53,6 +53,12 @@ namespace Kaminari
         {
             running = false;
             thread.Join();
+        }
+
+        public void FixTickId(ushort id)
+        {
+            TickId = id;
+            lastPacketID = id;
         }
 
         public void EarlyOneShot(Action action)
@@ -110,6 +116,7 @@ namespace Kaminari
         {
             while (running)
             {
+                ++TickId;
                 TickTime = DateTimeExtensions.now();
 
                 while (earlyOneShot.TryDequeue(out var action))

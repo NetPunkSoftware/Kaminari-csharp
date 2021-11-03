@@ -13,9 +13,16 @@ namespace Kaminari
 
 		public Buffer()
 		{
-			_body = new byte[500];
+			_body = new byte[512];
 			_offset = 0;
-			_index = 5;
+			_index = Packet.DataStart;
+		}
+
+		public Buffer(int buffer_size)
+		{
+			_body = new byte[buffer_size];
+			_offset = 0;
+			_index = Packet.DataStart;
 		}
 
 		public Buffer(Buffer other)

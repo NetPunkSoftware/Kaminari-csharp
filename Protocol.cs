@@ -12,12 +12,12 @@ namespace Kaminari
 		private class ResolvedBlock
 		{
 			public byte loopCounter;
-			public List<byte> packetCounters;
+			public HashSet<uint> packetCounters;
 
 			public ResolvedBlock(byte loopCounter)
 			{
 				this.loopCounter = loopCounter;
-				this.packetCounters = new List<byte>();
+				this.packetCounters = new HashSet<uint>();
 			}
 		}
 
@@ -26,7 +26,9 @@ namespace Kaminari
 		private float estimatedRTT;
 		private ushort sinceLastRecv;
 		private ushort lastBlockIdRead;
+		private ushort lastTickIdRead;
 		private ushort expectedBlockId;
+		private ushort expectedTickId;
 		private bool serverBasedSync;
 		private ushort lastServerID;
 		private float serverTimeDiff;
@@ -39,8 +41,9 @@ namespace Kaminari
 		private float sendKbpsEstimate;
 		private float sendKbpsEstimateAcc;
 		private ulong sendKbpsEstimateTime;
-		private ushort lastRecvSize;
-		private ushort lastSendSize;
+		private uint lastRecvSize;
+		private Dictionary<ushort, uint> perTickSize;
+		private uint lastSendSize;
 		private Dictionary<ushort, ResolvedBlock> alreadyResolved;
 		private ServerPhaseSync<PQ> phaseSync;
 		private ConcurrentDictionary<ushort, ulong> packetTimes;
@@ -79,14 +82,35 @@ namespace Kaminari
 			return estimatedRTT;
 		}
 
-		public ushort getLastSentSuperPacketSize(SuperPacket<PQ> superpacket)
+		public uint getLastSentSuperPacketSize(SuperPacket<PQ> superpacket)
 		{
 			return lastSendSize;
 		}
-		public ushort getLastRecvSuperPacketSize(IBaseClient client)
+
+		public uint getLastRecvSuperPacketSize()
 		{
-			return lastRecvSize;
+			var size = lastRecvSize;
+			lastRecvSize = 0;
+			return size;
 		}
+
+		public float getPerTickSize()
+        {
+			float size = 0.0f;
+			var count = perTickSize.Count;
+			if (count == 0)
+            {
+				return 0.0f;
+            }
+
+			foreach (var pair in perTickSize)
+            {
+				size += pair.Value;
+            }
+
+			perTickSize.Clear();
+			return size / count;
+        }
 
 		public float RecvKbpsEstimate()
 		{
@@ -119,11 +143,6 @@ namespace Kaminari
 			bufferSize = size;
 		}
 
-		public bool isExpected(ushort id)
-		{
-			return expectedBlockId == 0 || Overflow.le(id, expectedBlockId);
-		}
-
 		public void setTimestamp(ulong timestamp, ushort blockId)
 		{
 			this.timestamp = timestamp;
@@ -147,6 +166,8 @@ namespace Kaminari
 			estimatedRTT = 50;
 			sinceLastRecv = 0;
 			lastBlockIdRead = 0;
+			lastTickIdRead = 0;
+			expectedTickId = 0;
 			serverBasedSync = true;
 			lastServerID = 0;
 			expectedBlockId = 0;
@@ -160,16 +181,16 @@ namespace Kaminari
 			sendKbpsEstimateAcc = 0;
 			sendKbpsEstimateTime = DateTimeExtensions.now();
 			alreadyResolved = new Dictionary<ushort, ResolvedBlock>();
+			perTickSize = new Dictionary<ushort, uint>();
 			packetTimes = new ConcurrentDictionary<ushort, ulong>();
 		}
 
 		public void InitiateHandshake(SuperPacket<PQ> superpacket)
 		{
 			superpacket.SetFlag(SuperPacketFlags.Handshake);
-			superpacket.SetInternalFlag(SuperPacketInternalFlags.WaitFirst);
 		}
 
-		public Buffer update(IBaseClient client, SuperPacket<PQ> superpacket)
+		public Buffer update(ushort tickId, IBaseClient client, SuperPacket<PQ> superpacket)
 		{
 			++sinceLastPing;
 			if (needsPing())
@@ -179,13 +200,13 @@ namespace Kaminari
 			}
 
 			// TODO(gpascualg): Lock superpacket
-			if (superpacket.finish())
+			bool first_packet = true;
+			if (superpacket.finish(tickId, first_packet))
 			{
 				Buffer buffer = new Buffer(superpacket.getBuffer());
 
 				// Register time for ping purposes
-				if (!superpacket.HasFlag(SuperPacketFlags.Handshake) && 
-					!superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst))
+				if (!superpacket.HasFlag(SuperPacketFlags.Handshake))
 				{
 					packetTimes.AddOrUpdate(buffer.readUshort(2), DateTimeExtensions.now(), (key, old) => DateTimeExtensions.now());
 				}
@@ -193,6 +214,8 @@ namespace Kaminari
 				// Update estimate
 				sendKbpsEstimateAcc += buffer.getPosition();
 				lastSendSize = (ushort)buffer.getPosition();
+				
+				first_packet = false;
 
 				return buffer;
 			}
@@ -216,14 +239,6 @@ namespace Kaminari
 			return serverTimeDiff;
 		}
 
-		private void increaseExpectedBlock(SuperPacket<PQ> superpacket)
-		{
-			if (!superpacket.HasFlag(SuperPacketFlags.Handshake) && !superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst))
-			{
-				expectedBlockId = Overflow.inc(expectedBlockId);
-			}
-		}
-
 		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IMarshal marshal)
 		{
 			timestampBlockId = expectedBlockId;
@@ -231,41 +246,57 @@ namespace Kaminari
 
 			if (!client.hasPendingSuperPackets())
 			{
-				increaseExpectedBlock(superpacket);
+				expectedBlockId = Overflow.inc(expectedBlockId);
+				expectedTickId = Overflow.inc(expectedTickId);
 
 				if (++sinceLastRecv >= Constants.MaxBlocksUntilDisconnection)
 				{
 					client.disconnect();
 				}
 
-				lastRecvSize = 0;
-				marshal.Update(client, expectedBlockId);
+				marshal.Update(client, expectedTickId);
 				return false;
 			}
 
 			sinceLastRecv = 0;
-			ushort expectedId = expectedBlockId;
+			ushort expectedId = expectedTickId;
 			if (!Constants.UseKumoQueues)
 			{
-				expectedBlockId = Overflow.sub(expectedBlockId, bufferSize);
+				expectedTickId = Overflow.sub(expectedTickId, bufferSize);
 			}
 
 			while (client.hasPendingSuperPackets() &&
-					!Overflow.ge(client.firstSuperPacketId(), expectedId))
+					!Overflow.ge(client.firstSuperPacketTickId(), expectedId))
 			{
 				read_impl(client, superpacket, marshal);
 			}
 
-			increaseExpectedBlock(superpacket);
-			marshal.Update(client, expectedBlockId);
+			marshal.Update(client, expectedTickId);
+			expectedBlockId = Overflow.inc(expectedBlockId);
+			expectedTickId = Overflow.inc(expectedTickId);
 			return true;
 		}
 
 		public void HandleServerTick(SuperPacketReader reader, SuperPacket<PQ> superpacket)
 		{
-			if (!superpacket.HasFlag(SuperPacketFlags.Handshake) && 
-				!superpacket.HasInternalFlag(SuperPacketInternalFlags.WaitFirst))
+			// Update sizes
+			recvKbpsEstimateAcc += reader.size();
+			lastRecvSize += reader.size();
+
+			if (!perTickSize.ContainsKey(reader.tickId()))
+            {
+				perTickSize.Add(reader.tickId(), reader.size());
+			}
+			else
+            {
+				perTickSize[reader.tickId()] += reader.size();
+			}
+
+			// Check handshake status
+			if (!superpacket.HasFlag(SuperPacketFlags.Handshake))
 			{
+				lastServerID = Overflow.max(lastServerID, reader.tickId());
+
 				// Update lag estimation
 				foreach (ushort ack in reader.getAcks())
 				{
@@ -277,50 +308,55 @@ namespace Kaminari
 					}
 				}
 			}
-
-			// Update PLL
-			lastServerID = Overflow.max(lastServerID, reader.id());
-			phaseSync.ServerPacket(lastServerID);
-
-			// Save estimate
-			recvKbpsEstimateAcc += reader.length();
-			lastRecvSize = reader.length();
-
-			if (!serverBasedSync)
+			else
 			{
-				return;
+				// Fix phase sync, otherwise we will get a huge spike
+				lastServerID = reader.tickId();
+				if (serverBasedSync)
+				{
+					phaseSync.FixTickId(lastServerID);
+				}
 			}
 
-			// Setup current expected ID and superpacket ID
-			// expectedBlockId = Math.Max(expectedBlockId, (ushort)(lastServerID + 1));
-			// superpacket.serverUpdatedId(lastServerID);
+			// Update PLL
+			phaseSync.ServerPacket(lastServerID);
 
-			// serverTimeDiff = expectedBlockId - lastServerID + superpacket.getID() - lastServerID;
-			// serverTimeDiff = superpacket.getID() - lastServerID;
-			// serverTimeDiff = Math.Max(0, superpacket.getID() - lastServerID);
-
-			expectedBlockId = lastServerID;
-			int idDiff = Overflow.abs_diff(superpacket.getID(), lastServerID);
-			int sign = Overflow.ge(superpacket.getID(), lastServerID) ? 1 : -1;
-			serverTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
+			// Update id diff
+			if (!reader.HasFlag(SuperPacketFlags.Handshake))
+			{
+				int idDiff = Overflow.abs_diff(phaseSync.TickId, lastServerID);
+				int sign = Overflow.ge(phaseSync.TickId, lastServerID) ? 1 : -1;
+				serverTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
+			}
 		}
 
-		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket)
+		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket, IMarshal marshal)
 		{
 			// Handle flags already
 			bool is_handshake = reader.HasFlag(SuperPacketFlags.Handshake);
 			if (is_handshake)
 			{
+				// During handshake, we update our tick to match the other side
+				lastBlockIdRead = reader.id();
+				lastTickIdRead = reader.tickId();
+				expectedBlockId = Overflow.inc(reader.id());
+				expectedTickId = Overflow.inc(reader.tickId());
+				lastServerID = reader.tickId();
+
+				// Reset all variables related to packet parsing
+				timestampBlockId = expectedBlockId;
+				timestamp = DateTimeExtensions.now();
+				loopCounter = 0;
+				alreadyResolved.Clear();
+
+				// Reset marshal
+				marshal.Reset();
+
 				if (!reader.HasFlag(SuperPacketFlags.Ack))
 				{
 					superpacket.SetFlag(SuperPacketFlags.Ack);
 					superpacket.SetFlag(SuperPacketFlags.Handshake);
-					superpacket.SetInternalFlag(SuperPacketInternalFlags.WaitFirst);
 				}
-			}
-			else
-			{
-				superpacket.ClearInternalFlag(SuperPacketInternalFlags.WaitFirst);
 			}
 
 			// Ack packets
@@ -343,33 +379,25 @@ namespace Kaminari
 			// Handshake process skips all procedures, including order
 			if (reader.HasFlag(SuperPacketFlags.Handshake))
 			{
-				// Make sure we are ready for the next valid block
-				expectedBlockId = Overflow.inc(reader.id());
-
-				// Reset all variables related to packet parsing
-				timestampBlockId = expectedBlockId;
-				timestamp = DateTimeExtensions.now();
-				loopCounter = 0;
-				alreadyResolved.Clear();
-
-				// Either case, skip all processing
-				lastBlockIdRead = reader.id();
+				// Nothing to do here, it's a handshake packet
+				// TODO(gpascualg): We don't need to add them at all
 				return;
 			}
 
-			Debug.Assert(!IsOutOfOrder(reader.id()), "Should never have out of order packets");
+			Debug.Assert(!IsOutOfOrder(reader.tickId()), "Should never have out of order packets");
 			
-			if (Overflow.sub(expectedBlockId, reader.id()) > Constants.MaximumBlocksUntilResync)
+			if (Overflow.sub(expectedTickId, reader.tickId()) > Constants.MaximumBlocksUntilResync)
 			{
 				superpacket.SetFlag(SuperPacketFlags.Handshake);
 			}
 
-			if (lastBlockIdRead > reader.id())
+			if (lastTickIdRead > reader.tickId())
 			{
 				loopCounter = (byte)(loopCounter + 1);
 			}
 
 			lastBlockIdRead = reader.id();
+			lastTickIdRead = reader.tickId();
 			reader.handlePackets<PQ, IBaseClient>(this, marshal, client);
 		}
 
@@ -377,15 +405,15 @@ namespace Kaminari
 		{
 			if (Constants.UseKumoQueues)
 			{
-				return Overflow.le(id, Overflow.sub(lastBlockIdRead, bufferSize));
+				return Overflow.le(id, Overflow.sub(lastTickIdRead, bufferSize));
 			}
 
-			return Overflow.le(id, lastBlockIdRead);
+			return Overflow.le(id, lastTickIdRead);
 		}
 
 		public bool resolve(PacketReader packet, ushort blockId)
 		{
-			byte id = packet.getId();
+			uint extendedId = packet.getExtendedId();
 
 			if (alreadyResolved.ContainsKey(blockId))
 			{
@@ -393,29 +421,30 @@ namespace Kaminari
 
 				if (info.loopCounter != loopCounter)
 				{
-					if (Overflow.sub(lastBlockIdRead, blockId) > Constants.MaximumBlocksUntilResync)
+					if (Overflow.sub(lastTickIdRead, blockId) > Constants.MaximumBlocksUntilResync)
 					{
 						info.loopCounter = loopCounter;
 						info.packetCounters.Clear();
 					}
 				}
-				else if (Overflow.sub(lastBlockIdRead, blockId) > Constants.MaximumBlocksUntilResync)
+				else if (Overflow.sub(lastTickIdRead, blockId) > Constants.MaximumBlocksUntilResync)
 				{
 					// TODO(gpascualg): Flag resync
+					UnityEngine.Debug.LogError($"DESYNC IN RESOLVE {expectedTickId} vs {blockId}");
 					return false;
 				}
 
-				if (info.packetCounters.Contains(id))
+				if (info.packetCounters.Contains(extendedId))
 				{
 					return false;
 				}
 
-				info.packetCounters.Add(id);
+				info.packetCounters.Add(extendedId);
 			}
 			else
 			{
 				ResolvedBlock info = new ResolvedBlock(loopCounter);
-				info.packetCounters.Add(id);
+				info.packetCounters.Add(extendedId);
 				alreadyResolved.Add(blockId, info);
 			}
 

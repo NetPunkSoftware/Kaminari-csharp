@@ -6,6 +6,6 @@ namespace Kaminari
 {
     public interface IHandlePacket
     {
-        bool handlePacket<T>(PacketReader packet, T client, ushort blockId) where T : IBaseClient;
+        MarshalParseState handlePacket<T>(PacketReader packet, T client, ushort blockId) where T : IBaseClient;
     }
 }
