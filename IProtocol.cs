@@ -6,11 +6,12 @@ namespace Kaminari
 {
 	public interface IProtocol<PQ> where PQ : IProtocolQueues
 	{
-		ushort getLastServerID();
-		ushort getExpectedBlockId();
-		ushort getLastReadID();
+		ushort ExpectedTickId { get; }
+		ushort LastServerId { get; }
+		ushort LastTickIdRead { get; }
+		float ServerTimeDiff { get; }
+
 		ServerPhaseSync<PQ> getPhaseSync();
-		float getServerTimeDiff();
 		byte getLoopCounter();
 		float getEstimatedRTT();
 		float RecvKbpsEstimate();

@@ -21,17 +21,16 @@ namespace Kaminari
 			}
 		}
 
+		public ushort ExpectedTickId { get; private set; }
+		public ushort LastServerId { get; private set; }
+		public ushort LastTickIdRead { get;private set; }
+		public float ServerTimeDiff { get; private set; }
+
 		private ushort bufferSize;
 		private ushort sinceLastPing;
 		private float estimatedRTT;
 		private ushort sinceLastRecv;
-		private ushort lastBlockIdRead;
-		private ushort lastTickIdRead;
-		private ushort expectedBlockId;
-		private ushort expectedTickId;
 		private bool serverBasedSync;
-		private ushort lastServerID;
-		private float serverTimeDiff;
 		private byte loopCounter;
 		private ulong timestamp;
 		private ushort timestampBlockId;
@@ -42,7 +41,7 @@ namespace Kaminari
 		private float sendKbpsEstimateAcc;
 		private ulong sendKbpsEstimateTime;
 		private uint lastRecvSize;
-		private Dictionary<ushort, uint> perTickSize;
+		private ConcurrentDictionary<ushort, uint> perTickSize;
 		private uint lastSendSize;
 		private Dictionary<ushort, ResolvedBlock> alreadyResolved;
 		private ServerPhaseSync<PQ> phaseSync;
@@ -54,19 +53,6 @@ namespace Kaminari
 			Reset();
 		}
 
-		public ushort getLastBlockIdRead()
-		{
-			return lastBlockIdRead;
-		}
-
-		public ushort getExpectedBlockId()
-		{
-			return expectedBlockId;
-		}
-		public ushort getLastReadID()
-		{
-			return lastBlockIdRead;
-		}
 		public ServerPhaseSync<PQ> getPhaseSync()
 		{
 			return phaseSync;
@@ -165,12 +151,10 @@ namespace Kaminari
 			sinceLastPing = 0;
 			estimatedRTT = 50;
 			sinceLastRecv = 0;
-			lastBlockIdRead = 0;
-			lastTickIdRead = 0;
-			expectedTickId = 0;
+			LastTickIdRead = 0;
+			ExpectedTickId = 0;
 			serverBasedSync = true;
-			lastServerID = 0;
-			expectedBlockId = 0;
+			LastServerId = 0;
 			loopCounter = 0;
 			timestamp = DateTimeExtensions.now();
 			timestampBlockId = 0;
@@ -181,7 +165,7 @@ namespace Kaminari
 			sendKbpsEstimateAcc = 0;
 			sendKbpsEstimateTime = DateTimeExtensions.now();
 			alreadyResolved = new Dictionary<ushort, ResolvedBlock>();
-			perTickSize = new Dictionary<ushort, uint>();
+			perTickSize = new ConcurrentDictionary<ushort, uint>();
 			packetTimes = new ConcurrentDictionary<ushort, ulong>();
 		}
 
@@ -229,40 +213,29 @@ namespace Kaminari
 			return sinceLastPing >= 20;
 		}
 
-		public ushort getLastServerID()
-		{
-			return lastServerID;
-		}
-
-		public float getServerTimeDiff()
-		{
-			return serverTimeDiff;
-		}
-
 		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IMarshal marshal)
 		{
-			timestampBlockId = expectedBlockId;
+			timestampBlockId = ExpectedTickId;
 			timestamp = DateTimeExtensions.now();
 
 			if (!client.hasPendingSuperPackets())
 			{
-				expectedBlockId = Overflow.inc(expectedBlockId);
-				expectedTickId = Overflow.inc(expectedTickId);
-
 				if (++sinceLastRecv >= Constants.MaxBlocksUntilDisconnection)
 				{
 					client.disconnect();
+					return false;
 				}
 
-				marshal.Update(client, expectedTickId);
+				marshal.Update(client, ExpectedTickId);
+				ExpectedTickId = Overflow.inc(ExpectedTickId);
 				return false;
 			}
 
 			sinceLastRecv = 0;
-			ushort expectedId = expectedTickId;
+			ushort expectedId = ExpectedTickId;
 			if (!Constants.UseKumoQueues)
 			{
-				expectedTickId = Overflow.sub(expectedTickId, bufferSize);
+				ExpectedTickId = Overflow.sub(ExpectedTickId, bufferSize);
 			}
 
 			while (client.hasPendingSuperPackets() &&
@@ -271,9 +244,8 @@ namespace Kaminari
 				read_impl(client, superpacket, marshal);
 			}
 
-			marshal.Update(client, expectedTickId);
-			expectedBlockId = Overflow.inc(expectedBlockId);
-			expectedTickId = Overflow.inc(expectedTickId);
+			marshal.Update(client, ExpectedTickId);
+			ExpectedTickId = Overflow.inc(ExpectedTickId);
 			return true;
 		}
 
@@ -282,20 +254,12 @@ namespace Kaminari
 			// Update sizes
 			recvKbpsEstimateAcc += reader.size();
 			lastRecvSize += reader.size();
-
-			if (!perTickSize.ContainsKey(reader.tickId()))
-            {
-				perTickSize.Add(reader.tickId(), reader.size());
-			}
-			else
-            {
-				perTickSize[reader.tickId()] += reader.size();
-			}
+			perTickSize.AddOrUpdate(reader.tickId(), reader.size(), (key, old) => old + reader.size());
 
 			// Check handshake status
 			if (!superpacket.HasFlag(SuperPacketFlags.Handshake))
 			{
-				lastServerID = Overflow.max(lastServerID, reader.tickId());
+				LastServerId = Overflow.max(LastServerId, reader.tickId());
 
 				// Update lag estimation
 				foreach (ushort ack in reader.getAcks())
@@ -311,22 +275,22 @@ namespace Kaminari
 			else
 			{
 				// Fix phase sync, otherwise we will get a huge spike
-				lastServerID = reader.tickId();
+				LastServerId = reader.tickId();
 				if (serverBasedSync)
 				{
-					phaseSync.FixTickId(lastServerID);
+					phaseSync.FixTickId(LastServerId);
 				}
 			}
 
 			// Update PLL
-			phaseSync.ServerPacket(lastServerID);
+			phaseSync.ServerPacket(reader.tickId(), LastServerId);
 
 			// Update id diff
 			if (!reader.HasFlag(SuperPacketFlags.Handshake))
 			{
-				int idDiff = Overflow.abs_diff(phaseSync.TickId, lastServerID);
-				int sign = Overflow.ge(phaseSync.TickId, lastServerID) ? 1 : -1;
-				serverTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
+				int idDiff = Overflow.abs_diff(phaseSync.TickId, LastServerId);
+				int sign = Overflow.ge(phaseSync.TickId, LastServerId) ? 1 : -1;
+				ServerTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
 			}
 		}
 
@@ -337,14 +301,11 @@ namespace Kaminari
 			if (is_handshake)
 			{
 				// During handshake, we update our tick to match the other side
-				lastBlockIdRead = reader.id();
-				lastTickIdRead = reader.tickId();
-				expectedBlockId = Overflow.inc(reader.id());
-				expectedTickId = Overflow.inc(reader.tickId());
-				lastServerID = reader.tickId();
+				ExpectedTickId = reader.tickId();
+				LastServerId = reader.tickId();
 
 				// Reset all variables related to packet parsing
-				timestampBlockId = expectedBlockId;
+				timestampBlockId = ExpectedTickId;
 				timestamp = DateTimeExtensions.now();
 				loopCounter = 0;
 				alreadyResolved.Clear();
@@ -381,23 +342,23 @@ namespace Kaminari
 			{
 				// Nothing to do here, it's a handshake packet
 				// TODO(gpascualg): We don't need to add them at all
+				LastTickIdRead = reader.tickId();
 				return;
 			}
 
 			Debug.Assert(!IsOutOfOrder(reader.tickId()), "Should never have out of order packets");
 			
-			if (Overflow.sub(expectedTickId, reader.tickId()) > Constants.MaximumBlocksUntilResync)
+			if (Overflow.sub(ExpectedTickId, reader.tickId()) > Constants.MaximumBlocksUntilResync)
 			{
 				superpacket.SetFlag(SuperPacketFlags.Handshake);
 			}
 
-			if (lastTickIdRead > reader.tickId())
+			if (LastTickIdRead > reader.tickId())
 			{
 				loopCounter = (byte)(loopCounter + 1);
 			}
 
-			lastBlockIdRead = reader.id();
-			lastTickIdRead = reader.tickId();
+			LastTickIdRead = reader.tickId();
 			reader.handlePackets<PQ, IBaseClient>(this, marshal, client);
 		}
 
@@ -405,10 +366,10 @@ namespace Kaminari
 		{
 			if (Constants.UseKumoQueues)
 			{
-				return Overflow.le(id, Overflow.sub(lastTickIdRead, bufferSize));
+				return Overflow.le(id, Overflow.sub(LastTickIdRead, bufferSize));
 			}
 
-			return Overflow.le(id, lastTickIdRead);
+			return Overflow.le(id, LastTickIdRead);
 		}
 
 		public bool resolve(PacketReader packet, ushort blockId)
@@ -421,16 +382,16 @@ namespace Kaminari
 
 				if (info.loopCounter != loopCounter)
 				{
-					if (Overflow.sub(lastTickIdRead, blockId) > Constants.MaximumBlocksUntilResync)
+					if (Overflow.sub(LastTickIdRead, blockId) > Constants.MaximumBlocksUntilResync)
 					{
 						info.loopCounter = loopCounter;
 						info.packetCounters.Clear();
 					}
 				}
-				else if (Overflow.sub(lastTickIdRead, blockId) > Constants.MaximumBlocksUntilResync)
+				else if (Overflow.sub(LastTickIdRead, blockId) > Constants.MaximumBlocksUntilResync)
 				{
 					// TODO(gpascualg): Flag resync
-					UnityEngine.Debug.LogError($"DESYNC IN RESOLVE {expectedTickId} vs {blockId}");
+					UnityEngine.Debug.LogError($"DESYNC IN RESOLVE {ExpectedTickId} vs {blockId}");
 					return false;
 				}
 

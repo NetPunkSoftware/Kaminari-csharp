@@ -10,7 +10,7 @@ namespace Kaminari
     {
         public ulong NextTick { get; private set; }
         public float Integrator { get; private set; }
-        public float AdjustedIntegrator => Integrator + protocol.getServerTimeDiff();
+        public float AdjustedIntegrator => Integrator + protocol.ServerTimeDiff;
 
         private Protocol<PQ> protocol;
         private ushort lastPacketID;
@@ -20,7 +20,6 @@ namespace Kaminari
         private SyncList<Action> onTick;
         private SyncList<Action> onLateTick;
         private bool running;
-        private bool tickCalled;
         private Thread thread;
         public ushort TickId { get; private set; }
         public ulong TickTime { get; private set; }
@@ -87,14 +86,20 @@ namespace Kaminari
             onLateTick.Add(action);
         }
 
-        public void ServerPacket(ushort packetID)
+        public void ServerPacket(ushort currentID, ushort maxID)
         {
+            // Multipackets should not be counted towards PLL
+            if (currentID == maxID)
+            {
+                return;
+            }
+
             // Get current tick time
             ulong time = TickTime + (ulong)Integrator;
         
             // More than one packet in between?
-            ushort packetDiff = Overflow.sub(packetID, lastPacketID);
-            lastPacketID = packetID;
+            ushort packetDiff = Overflow.sub(maxID, lastPacketID);
+            lastPacketID = maxID;
             if (packetDiff > 1)
             {
                 NextTick += (ulong)(Integrator * (packetDiff - 1));
