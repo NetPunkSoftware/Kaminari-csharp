@@ -175,33 +175,31 @@ namespace Kaminari
 			}
 		}
 
-		public void onReceivedUnsafe(byte[] data, int size)
+		public void onReceivedUnsafe(ushort tickId, byte[] data, int size)
 		{
 			SuperPacketReader reader = new SuperPacketReader(data, size);
 			protocol.HandleServerTick(reader, superPacket);
-        	onReceivedImpl(reader);
+        	onReceivedImpl(tickId, reader);
 		}
 
-		public void onReceivedSafe(byte[] data, int size)
+		public void onReceivedSafe(ushort tickId, byte[] data, int size)
 		{
 			SuperPacketReader reader = new SuperPacketReader(data, size);
 			protocol.HandleServerTick(reader, superPacket);
-        	protocol.getPhaseSync().EarlyOneShot(() => onReceivedImpl(reader));
+        	protocol.getPhaseSync().EarlyOneShot(() => onReceivedImpl(tickId, reader));
 		}
 
-		private void onReceivedImpl(SuperPacketReader reader)
+		private void onReceivedImpl(ushort tickId, SuperPacketReader reader)
 		{
 			if (DropRecv())
 			{
 				return;
 			}
 
-			if (protocol.IsOutOfOrder(reader.tickId()))
+			if (protocol.IsOutOfOrder(reader.tickId()) && !reader.HasFlag(SuperPacketFlags.Handshake))
 			{
 				return;
 			}
-
-			UnityEngine.Debug.Log($"RECEIVED PACKET {reader.tickId()} SIZE {reader.size()}");
 
 			// Add to pending list
 			pendingPackets.Add(reader);
@@ -209,7 +207,7 @@ namespace Kaminari
 			lastPacketSize = reader.size();
 
 			// Handle all acks already
-			protocol.HandleAcks(reader, superPacket, marshal);
+			protocol.HandleAcks(tickId, reader, superPacket, marshal);
 		}
 
 		public IProtocol<PQ> getProtocol()

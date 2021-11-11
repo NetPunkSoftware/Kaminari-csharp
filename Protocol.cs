@@ -271,6 +271,11 @@ namespace Kaminari
 						estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
 					}
 				}
+
+				// TODO(gpascualg): Make phase sync id diff optional
+				int idDiff = Overflow.abs_diff(phaseSync.TickId, LastServerId);
+				int sign = Overflow.ge(phaseSync.TickId, LastServerId) ? 1 : -1;
+				ServerTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
 			}
 			else
 			{
@@ -284,22 +289,33 @@ namespace Kaminari
 
 			// Update PLL
 			phaseSync.ServerPacket(reader.tickId(), LastServerId);
-
-			// Update id diff
-			if (!reader.HasFlag(SuperPacketFlags.Handshake))
-			{
-				int idDiff = Overflow.abs_diff(phaseSync.TickId, LastServerId);
-				int sign = Overflow.ge(phaseSync.TickId, LastServerId) ? 1 : -1;
-				ServerTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
-			}
 		}
 
-		public void HandleAcks(SuperPacketReader reader, SuperPacket<PQ> superpacket, IMarshal marshal)
+		public void HandleAcks(ushort tickId, SuperPacketReader reader, SuperPacket<PQ> superpacket, IMarshal marshal)
 		{
-			// Handle flags already
+			// Ack packets
+			foreach (ushort ack in reader.getAcks())
+			{
+				superpacket.Ack(ack);
+			}
+
+			// Schedule ack if necessary
 			bool is_handshake = reader.HasFlag(SuperPacketFlags.Handshake);
+			if (is_handshake || reader.hasData() || reader.isPingPacket())
+			{
+				superpacket.scheduleAck(reader.id());
+			}
+
+			// Handle flags already
 			if (is_handshake)
 			{
+				// Check if there was too much of a difference, in which case, flag handshake again
+				// TODO(gpascualg): Remove re-handshake max diff magic number
+				if (Overflow.abs_diff(reader.tickId(), tickId) > 10)
+				{
+					superpacket.SetFlag(SuperPacketFlags.Handshake);
+				}
+				
 				// During handshake, we update our tick to match the other side
 				ExpectedTickId = reader.tickId();
 				LastServerId = reader.tickId();
@@ -318,18 +334,6 @@ namespace Kaminari
 					superpacket.SetFlag(SuperPacketFlags.Ack);
 					superpacket.SetFlag(SuperPacketFlags.Handshake);
 				}
-			}
-
-			// Ack packets
-			foreach (ushort ack in reader.getAcks())
-			{
-				superpacket.Ack(ack);
-			}
-
-			// Schedule ack if necessary
-			if (is_handshake || reader.hasData() || reader.isPingPacket())
-			{
-				superpacket.scheduleAck(reader.id());
 			}
 		}
 
