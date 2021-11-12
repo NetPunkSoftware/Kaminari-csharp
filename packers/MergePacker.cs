@@ -35,7 +35,7 @@ namespace Kaminari
 			pending.Add(new PendingData<D>(data));
 		}
 
-		public override void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock)
+		public override void process(IMarshal marshal, ushort tickId, ushort blockId, ref ushort remaining, ref bool unfittingData, SortedDictionary<uint, List<Packet>> byBlock)
 		{
 			if (pending.Count == 0)
 			{
@@ -44,11 +44,11 @@ namespace Kaminari
 
 			G global = new G();
 			global.initialize();
-			ushort size = (ushort)(6 + 2 + newBlockCost(blockId, byBlock));
+			ushort size = (ushort)(6 + 2 + newTickBlockCost(tickId, byBlock));
 
 			foreach (PendingData<D> pnd in pending)
 			{
-				if (isPending(pnd.blocks, blockId, false))
+				if (isPending(pnd.InternalTickList, tickId, false))
 				{
 					break;
 				}
@@ -56,12 +56,14 @@ namespace Kaminari
 				ushort nextSize = (ushort)(size + pnd.data.size(marshal));
 				if (nextSize > remaining)
 				{
+					unfittingData = true;
 					break;
 				}
 
 				size = nextSize;
 				global.getData().Add(pnd.data);
-				pnd.blocks.Add(blockId);
+				pnd.InternalTickList.Add(tickId);
+				pnd.ClientAckIds.Add(blockId);
 			}
 
 			if (global.getData().Count == 0)
@@ -73,14 +75,14 @@ namespace Kaminari
 			global.pack(marshal, packet);
 			remaining = (ushort)(remaining - size);
 
-			if (byBlock.ContainsKey(blockId))
+			if (byBlock.ContainsKey(tickId))
 			{
-				byBlock[blockId].Add(packet);
+				byBlock[tickId].Add(packet);
 			}
 			else
 			{
-				byBlock.Add(blockId, new List<Packet>());
-				byBlock[blockId].Add(packet);
+				byBlock.Add(tickId, new List<Packet>());
+				byBlock[tickId].Add(packet);
 			}
 		}
 	}

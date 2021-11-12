@@ -19,7 +19,7 @@ namespace Kaminari
 
 		public abstract void add(IMarshal marshal, ushort opcode, D data, Action callback);
 
-		public abstract void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock);
+		public abstract void process(IMarshal marshal, ushort tickId, ushort blockId, ref ushort remaining, ref bool unfittingData, SortedDictionary<uint, List<Packet>> byBlock);
 
 		public void ack(ushort blockId)
 		{
@@ -29,7 +29,7 @@ namespace Kaminari
 			{
 				PendingData<T> p = pending[i];
 
-				foreach (ushort s in p.blocks)
+				foreach (ushort s in p.ClientAckIds)
 				{
 					if (s == blockId)
 					{
@@ -61,7 +61,7 @@ namespace Kaminari
 					Overflow.sub(blockId, blocks[blocks.Count - 1]) >= Constants.ResendThreshold;
 		}
 
-		public ushort getActualBlock(List<ushort> blocks, ushort blockId)
+		public ushort getActualTickId(List<ushort> blocks, ushort blockId)
 		{
 			if (blocks.Count != 0)
 			{
@@ -71,7 +71,7 @@ namespace Kaminari
 			return blockId;
 		}
 
-		public ushort newBlockCost(ushort blockId, SortedDictionary<uint, List<Packet>> byBlock)
+		public ushort newTickBlockCost(ushort blockId, SortedDictionary<uint, List<Packet>> byBlock)
 		{
 			if (byBlock.ContainsKey(blockId))
 			{

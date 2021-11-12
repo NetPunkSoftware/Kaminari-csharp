@@ -31,9 +31,9 @@ namespace Kaminari
 			packer.add(packet);
 		}
 
-		public void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock)
+		public void process(IMarshal marshal, ushort tickId, ushort blockId, ref ushort remaining, ref bool unfittingData, SortedDictionary<uint, List<Packet>> byBlock)
 		{
-			packer.process(marshal, blockId, ref remaining, byBlock);
+			packer.process(marshal, tickId, blockId, ref remaining, ref unfittingData, byBlock);
 
 			if (maxRetries == 0)
 			{

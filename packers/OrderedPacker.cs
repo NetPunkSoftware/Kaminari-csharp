@@ -34,9 +34,9 @@ namespace Kaminari
 			add(packet);
 		}
 
-		public override void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock)
+		public override void process(IMarshal marshal, ushort tickId, ushort blockId, ref ushort remaining, ref bool unfittingData, SortedDictionary<uint, List<Packet>> byBlock)
 		{
-			if (!isPending(blockId))
+			if (!isPending(tickId))
 			{
 				return;
 			}
@@ -44,13 +44,14 @@ namespace Kaminari
 			int numInserted = 0;
 			foreach (PendingData<Packet> pnd in pending)
 			{
-				uint actualBlock = getActualBlock(pnd.blocks, blockId);
+				uint actualBlock = getActualTickId(pnd.InternalTickList, tickId);
 				ushort size = pnd.data.getSize();
 
 				if (byBlock.ContainsKey(actualBlock))
 				{
 					if (size > remaining)
 					{
+						unfittingData = true;
 						break;
 					}
 
@@ -61,6 +62,7 @@ namespace Kaminari
 					size = (ushort)(size + 4);
 					if (size > remaining)
 					{
+						unfittingData = true;
 						break;
 					}
 
@@ -68,7 +70,8 @@ namespace Kaminari
 					byBlock[actualBlock].Add(pnd.data);
 				}
 
-				pnd.blocks.Add(blockId);
+				pnd.InternalTickList.Add(tickId);
+				pnd.ClientAckIds.Add(blockId);
 				remaining = (ushort)(remaining - size);
 				++numInserted;
 			}
@@ -76,7 +79,7 @@ namespace Kaminari
 			if (numInserted > 0)
 			{
 				hasNewPacket = false;
-				lastBlock = blockId;
+				lastBlock = tickId;
 			}
 		}
 

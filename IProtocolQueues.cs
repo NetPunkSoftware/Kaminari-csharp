@@ -8,6 +8,6 @@ namespace Kaminari
     {
         void reset();
         void ack(ushort blockId);
-        void process(ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock);
+        void process(ushort tickId, ushort blockId, ref ushort remaining, ref bool unfittingData, SortedDictionary<uint, List<Packet>> byBlock);
     }
 }

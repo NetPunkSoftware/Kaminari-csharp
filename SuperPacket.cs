@@ -36,6 +36,7 @@ namespace Kaminari
         private Dictionary<ushort, byte> _opcode_counter;
         private Buffer _buffer;
         private PQ _queues;
+        private bool _last_left_data;
 
         public Buffer getBuffer()
         {
@@ -150,7 +151,7 @@ namespace Kaminari
         {
             _buffer.reset();
 
-            //  First two bytes are size, next two id, finally 1 byte for flags
+            //  First two bytes are tick id, next two id, finally 1 byte for flags
             _buffer.write(tickId);
             _buffer.write(_id);
             _buffer.write(_flags);
@@ -165,16 +166,17 @@ namespace Kaminari
             _buffer.write(_pendingAcks);
 
             //  -1 is to account for the number of blocks
-            ushort remaining = (ushort)(MAX_SIZE - _buffer.getPosition() - 1);
+            ushort remaining = (ushort)(MAX_SIZE - _buffer.getPosition() - 1 - 1);
 
             // During handshake/resync do not include any packets
             bool hasData = false;
+            _last_left_data = false;
             if (!HasFlag(SuperPacketFlags.Handshake))
             {
                 // Organize packets that must be resent until ack'ed
                 SortedDictionary<uint, List<Packet>> by_block = new SortedDictionary<uint, List<Packet>>();
 
-                _queues.process(_id, ref remaining, by_block);
+                _queues.process(tickId, _id, ref remaining, ref _last_left_data, by_block);
 
                 // Write number of blocks
                 _buffer.write((byte)by_block.Count);
@@ -207,6 +209,7 @@ namespace Kaminari
                         _buffer.write((ushort)Convert.ToUInt16(entry.Key & 0xffff));
                         _buffer.write((byte)entry.Value.Count);
 
+                        UnityEngine.Assertions.Assert.AreNotEqual(entry.Value.Count, 0);
                         foreach (var packet in entry.Value)
                         {
                             if (entry.Key == _id)
@@ -227,7 +230,6 @@ namespace Kaminari
 
             // Increment _id for next iter and acks
             _id = Overflow.inc(_id);
-
             return hasAcks || hasData || (isFirst && _flags != 0);
         }
     }

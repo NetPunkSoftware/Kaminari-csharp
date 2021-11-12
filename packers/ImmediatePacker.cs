@@ -29,22 +29,23 @@ namespace Kaminari
 			add(packet);
 		}
 
-		public override void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock)
+		public override void process(IMarshal marshal, ushort tickId, ushort blockId, ref ushort remaining, ref bool unfittingData, SortedDictionary<uint, List<Packet>> byBlock)
 		{
 			foreach (PendingData<Packet> pnd in pending)
 			{
-				if (!isPending(pnd.blocks, blockId, false))
+				if (!isPending(pnd.InternalTickList, tickId, false))
 				{
 					continue;
 				}
 
-				uint actualBlock = getActualBlock(pnd.blocks, blockId);
+				uint actualBlock = getActualTickId(pnd.InternalTickList, tickId);
 				ushort size = (ushort)pnd.data.getSize();
 
 				if (byBlock.ContainsKey(actualBlock))
 				{
 					if (size > remaining)
 					{
+						unfittingData = true;
 						break;
 					}
 
@@ -55,6 +56,7 @@ namespace Kaminari
 					size = (ushort)(size + 4);
 					if (size > remaining)
 					{
+						unfittingData = true;
 						break;
 					}
 
@@ -62,7 +64,8 @@ namespace Kaminari
 					byBlock[actualBlock].Add(pnd.data);
 				}
 
-				pnd.blocks.Add(blockId);
+				pnd.InternalTickList.Add(tickId);
+				pnd.ClientAckIds.Add(blockId);
 				remaining = (ushort)(remaining - size);
 			}
 		}

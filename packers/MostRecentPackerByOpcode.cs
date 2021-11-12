@@ -41,7 +41,8 @@ namespace Kaminari
 			if (opcodeMap.ContainsKey(opcode))
 			{
 				opcodeMap[opcode].data.packet = packet;
-				opcodeMap[opcode].blocks.Clear();
+				opcodeMap[opcode].InternalTickList.Clear();
+				opcodeMap[opcode].ClientAckIds.Clear();
 			}
 			else
 			{
@@ -50,22 +51,23 @@ namespace Kaminari
 			}
 		}
 
-		public override void process(IMarshal marshal, ushort blockId, ref ushort remaining, SortedDictionary<uint, List<Packet>> byBlock)
+		public override void process(IMarshal marshal, ushort tickId, ushort blockId, ref ushort remaining, ref bool unfittingData, SortedDictionary<uint, List<Packet>> byBlock)
 		{
 			foreach (PendingData<PacketWithOpcode> pnd in pending)
 			{
-				if (!isPending(pnd.blocks, blockId, false))
+				if (!isPending(pnd.InternalTickList, tickId, false))
 				{
 					continue;
 				}
 				
-				uint actualBlock = getActualBlock(pnd.blocks, blockId);
+				uint actualBlock = getActualTickId(pnd.InternalTickList, tickId);
 				ushort size = (ushort)pnd.data.packet.getSize();
 
 				if (byBlock.ContainsKey(actualBlock))
 				{
 					if (size > remaining)
 					{
+						unfittingData = true;
 						break;
 					}
 
@@ -76,6 +78,7 @@ namespace Kaminari
 					size = (ushort)(size + 4);
 					if (size > remaining)
 					{
+						unfittingData = true;
 						break;
 					}
 
@@ -83,7 +86,8 @@ namespace Kaminari
 					byBlock[actualBlock].Add(pnd.data.packet);
 				}
 
-				pnd.blocks.Add(blockId);
+				pnd.InternalTickList.Add(tickId);
+				pnd.ClientAckIds.Add(blockId);
 				remaining = (ushort)(remaining - size);
 			}
 		}
