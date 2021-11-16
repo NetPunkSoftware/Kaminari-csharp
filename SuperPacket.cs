@@ -33,7 +33,6 @@ namespace Kaminari
         private uint _pendingAcks;
         private bool _mustAck;
         private Dictionary<ushort, byte> _clearFlagsOnAck;
-        private Dictionary<ushort, byte> _opcode_counter;
         private Buffer _buffer;
         private PQ _queues;
         private bool _last_left_data;
@@ -54,7 +53,6 @@ namespace Kaminari
             _pendingAcks = 0;
             _mustAck = false;
             _clearFlagsOnAck = new Dictionary<ushort, byte>();
-            _opcode_counter = new Dictionary<ushort, byte>();
             _buffer = new Buffer(MAX_SIZE);
             _queues = queues;
             
@@ -142,11 +140,6 @@ namespace Kaminari
             _mustAck = true;
         }
 
-        public void prepare()
-        {
-            _opcode_counter.Clear();
-        }
-
         public bool finish(ushort tickId, bool isFirst)
         {
             _buffer.reset();
@@ -204,6 +197,7 @@ namespace Kaminari
                     }
 
                     // Write in packets
+                    byte counter = 0;
                     foreach (var entry in by_block)
                     {
                         _buffer.write((ushort)Convert.ToUInt16(entry.Key & 0xffff));
@@ -214,12 +208,7 @@ namespace Kaminari
                         {
                             if (entry.Key == _id)
                             {
-                                if (!_opcode_counter.ContainsKey(packet.getOpcode()))
-                                {
-                                    _opcode_counter.Add(packet.getOpcode(), 0);
-                                }
-                                
-                                packet.finish(_opcode_counter[packet.getOpcode()]++);
+                                packet.finish(counter++);
                             }
 
                             _buffer.write(packet);

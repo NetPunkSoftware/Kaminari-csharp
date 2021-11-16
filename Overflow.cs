@@ -73,6 +73,11 @@ namespace Kaminari
                 (x >= y) ? (ushort)(x - y) : (ushort)(ushort.MaxValue - y + x);
         }
 
+        public static ushort add(ushort x, ushort y)
+        {
+            return (ushort)(x + y);
+        }
+
         public static ushort abs_diff(ushort x, ushort y)
         {
             return

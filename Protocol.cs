@@ -43,9 +43,15 @@ namespace Kaminari
 		private uint lastRecvSize;
 		private ConcurrentDictionary<ushort, uint> perTickSize;
 		private uint lastSendSize;
-		private Dictionary<ushort, ResolvedBlock> alreadyResolved;
 		private ServerPhaseSync<PQ> phaseSync;
 		private ConcurrentDictionary<ushort, ulong> packetTimes;
+
+		// Resolution
+		const ushort ResolutionTableSize = 200 * 4;
+		const ushort ResolutionTableDiff = ResolutionTableSize - 1;
+		private ulong[] resolutionTable;
+		private ushort oldestResolutionBlockId;
+		private ushort oldestResolutionPosition;
 
 		public Protocol()
 		{
@@ -164,9 +170,12 @@ namespace Kaminari
 			sendKbpsEstimate = 0;
 			sendKbpsEstimateAcc = 0;
 			sendKbpsEstimateTime = DateTimeExtensions.now();
-			alreadyResolved = new Dictionary<ushort, ResolvedBlock>();
 			perTickSize = new ConcurrentDictionary<ushort, uint>();
 			packetTimes = new ConcurrentDictionary<ushort, ulong>();
+			
+			resolutionTable = new ulong[ResolutionTableSize];
+			oldestResolutionBlockId = 0;
+			oldestResolutionPosition = 0;
 		}
 
 		public void InitiateHandshake(SuperPacket<PQ> superpacket)
@@ -185,7 +194,6 @@ namespace Kaminari
 
 			// TODO(gpascualg): Lock superpacket
 			bool first_packet = true;
-			superpacket.prepare();
 			if (superpacket.finish(tickId, first_packet))
 			{
 				Buffer buffer = new Buffer(superpacket.getBuffer());
@@ -325,9 +333,9 @@ namespace Kaminari
 				timestampBlockId = ExpectedTickId;
 				timestamp = DateTimeExtensions.now();
 				loopCounter = 0;
-				alreadyResolved.Clear();
 
 				// Reset marshal
+				ResetResolutionTable(reader.tickId());
 				marshal.Reset();
 
 				if (!reader.HasFlag(SuperPacketFlags.Ack))
@@ -379,42 +387,47 @@ namespace Kaminari
 
 		public bool resolve(PacketReader packet, ushort blockId)
 		{
-			uint extendedId = packet.getExtendedId();
-
-			if (alreadyResolved.ContainsKey(blockId))
+			// Check if this is an older block id
+			if (Overflow.le(blockId, oldestResolutionBlockId))
 			{
-				ResolvedBlock info = alreadyResolved[blockId];
-
-				if (info.loopCounter != loopCounter)
-				{
-					if (Overflow.sub(LastTickIdRead, blockId) > Constants.MaximumBlocksUntilResync)
-					{
-						info.loopCounter = loopCounter;
-						info.packetCounters.Clear();
-					}
-				}
-				else if (Overflow.sub(LastTickIdRead, blockId) > Constants.MaximumBlocksUntilResync)
-				{
-					// TODO(gpascualg): Flag resync
-					UnityEngine.Debug.LogError($"DESYNC IN RESOLVE {ExpectedTickId} vs {blockId}");
-					return false;
-				}
-
-				if (info.packetCounters.Contains(extendedId))
-				{
-					return false;
-				}
-
-				info.packetCounters.Add(extendedId);
-			}
-			else
-			{
-				ResolvedBlock info = new ResolvedBlock(loopCounter);
-				info.packetCounters.Add(extendedId);
-				alreadyResolved.Add(blockId, info);
+				ResetResolutionTable(blockId);
+				//client->flag_desync();
+				return false;
 			}
 
+			// Otherwise, it might be newer
+			ushort diff = Overflow.sub(blockId, oldestResolutionBlockId);
+			if (diff >= ResolutionTableSize)
+			{
+				// Clean oldest, as it is a newer packet that hasn't been parsed yet
+				resolutionTable[oldestResolutionPosition] = 0;
+
+				// We have to move oldest so that newest points to blockId
+				ushort move_amount = Overflow.sub(diff, ResolutionTableDiff);
+				oldestResolutionBlockId = Overflow.add(oldestResolutionBlockId, move_amount);
+				oldestResolutionPosition = (ushort)(Overflow.add(oldestResolutionPosition, move_amount) % ResolutionTableSize);
+			}
+
+			// Compute packet mask
+			ulong mask = (ulong)(1) << packet.getCounter();
+
+			// Get blockId position, bitmask, and compute
+			ushort idx = (ushort)(Overflow.add(oldestResolutionPosition, diff) % ResolutionTableSize);
+			if ((resolutionTable[idx] & mask) != 0)
+			{
+				// The packet is already in
+				return false;
+			}
+
+			resolutionTable[idx] |= mask;
 			return true;
+		}
+
+		public void ResetResolutionTable(ushort blockId)
+		{
+			Array.Clear(resolutionTable, 0, resolutionTable.Length);
+			oldestResolutionBlockId = Overflow.sub(blockId, ResolutionTableSize / 2);
+			oldestResolutionPosition = 0;
 		}
 	}
 }

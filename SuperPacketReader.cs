@@ -96,7 +96,6 @@ namespace Kaminari
 						switch (marshal.handlePacket(packet, client, blockId))
 						{
 							case MarshalParseState.ParsingFailed:
-								UnityEngine.Debug.LogError($"Packet not valid at {blockId}: {packet.getOpcode():X}/{packet.getCounter()} [{packet.getExtendedId():X}]");
 								client.handlingError();
 								return;
 
@@ -114,7 +113,6 @@ namespace Kaminari
 					}
                     else
                     {
-						UnityEngine.Debug.LogWarning($"Already resolved at {blockId}: {packet.getOpcode():X}/{packet.getCounter()} [{packet.getExtendedId():X}]");
 						var size = Packet.DataStart + marshal.PacketSize(packet);
 						blockPos += size;
 						remaining -= size;
