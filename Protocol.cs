@@ -406,6 +406,9 @@ namespace Kaminari
 				ushort move_amount = Overflow.sub(diff, ResolutionTableDiff);
 				oldestResolutionBlockId = Overflow.add(oldestResolutionBlockId, move_amount);
 				oldestResolutionPosition = (ushort)(Overflow.add(oldestResolutionPosition, move_amount) % ResolutionTableSize);
+
+				// Fix diff so we don't overrun the new position
+				diff = Overflow.sub(diff, move_amount);
 			}
 
 			// Compute packet mask
