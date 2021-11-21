@@ -32,6 +32,7 @@ namespace Kaminari
         private ushort _ackBase;
         private uint _pendingAcks;
         private bool _mustAck;
+        private byte _counter;
         private Dictionary<ushort, byte> _clearFlagsOnAck;
         private Buffer _buffer;
         private PQ _queues;
@@ -140,6 +141,11 @@ namespace Kaminari
             _mustAck = true;
         }
 
+        public void prepare()
+        {
+            _counter = 0;
+        }
+
         public bool finish(ushort tickId, bool isFirst)
         {
             _buffer.reset();
@@ -197,7 +203,6 @@ namespace Kaminari
                     }
 
                     // Write in packets
-                    byte counter = 0;
                     foreach (var entry in by_block)
                     {
                         _buffer.write((ushort)Convert.ToUInt16(entry.Key & 0xffff));
@@ -208,7 +213,7 @@ namespace Kaminari
                         {
                             if (entry.Key == _id)
                             {
-                                packet.finish(counter++);
+                                packet.finish(_counter++);
                             }
 
                             _buffer.write(packet);

@@ -194,6 +194,7 @@ namespace Kaminari
 
 			// TODO(gpascualg): Lock superpacket
 			bool first_packet = true;
+			superpacket.prepare();
 			if (superpacket.finish(tickId, first_packet))
 			{
 				Buffer buffer = new Buffer(superpacket.getBuffer());
