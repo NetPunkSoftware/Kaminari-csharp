@@ -397,10 +397,9 @@ namespace Kaminari
 
 			// Otherwise, it might be newer
 			ushort diff = Overflow.sub(blockId, oldestResolutionBlockId);
+			ushort idx = (ushort)(Overflow.add(oldestResolutionPosition, diff) % ResolutionTableSize);
 			if (diff >= ResolutionTableSize)
 			{
-				// Clean oldest, as it is a newer packet that hasn't been parsed yet
-				resolutionTable[oldestResolutionPosition] = 0;
 
 				// We have to move oldest so that newest points to blockId
 				ushort move_amount = Overflow.sub(diff, ResolutionTableDiff);
@@ -408,14 +407,16 @@ namespace Kaminari
 				oldestResolutionPosition = (ushort)(Overflow.add(oldestResolutionPosition, move_amount) % ResolutionTableSize);
 
 				// Fix diff so we don't overrun the new position
-				diff = Overflow.sub(diff, move_amount);
+				idx = (ushort)(Overflow.add(oldestResolutionPosition, Overflow.sub(diff, move_amount)) % ResolutionTableSize);
+
+				// Clean position, as it is a newer packet that hasn't been parsed yet
+				resolutionTable[idx] = 0;
 			}
 
 			// Compute packet mask
 			ulong mask = (ulong)(1) << packet.getCounter();
 
 			// Get blockId position, bitmask, and compute
-			ushort idx = (ushort)(Overflow.add(oldestResolutionPosition, diff) % ResolutionTableSize);
 			if ((resolutionTable[idx] & mask) != 0)
 			{
 				// The packet is already in
