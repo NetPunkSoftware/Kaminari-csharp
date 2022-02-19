@@ -9,6 +9,7 @@ namespace Kaminari
     public class ServerPhaseSync<PQ> where PQ : IProtocolQueues
     {
         public ulong NextTick { get; private set; }
+        public ulong MeanTickTime { get; private set; }
         public float Integrator { get; private set; }
         public float AdjustedIntegrator => Integrator + protocol.ServerTimeDiff;
 
@@ -119,6 +120,8 @@ namespace Kaminari
 
         private void update()
         {
+            MeanTickTime = 0;
+
             while (running)
             {
                 ++TickId;
@@ -148,6 +151,10 @@ namespace Kaminari
                 {
                     action();
                 }
+
+                // Update tick time
+                MeanTickTime = DateTimeExtensions.now() - TickTime;
+                // MeanTickTime = (ulong)((float)MeanTickTime * 0.9f + (float)(DateTimeExtensions.now() - TickTime) * 0.1f);
 
                 // Wait until next tick, account sever/client diff
                 Thread.Sleep((int)Math.Max(1.01f, AdjustedIntegrator));

@@ -68,6 +68,14 @@ namespace Kaminari
             }
         }
 
+        public void RemoveAllButLast()
+        {
+            lock (_lock)
+            {
+                list.RemoveRange(0, list.Count - 1);
+            }
+        }
+
         public T Last()
         {
             lock (_lock)
