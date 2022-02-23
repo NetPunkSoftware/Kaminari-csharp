@@ -210,6 +210,7 @@ namespace Kaminari
                 // Register time for ping purposes
                 ushort packetIdDiff = Overflow.sub(buffer.readUshort(2), timestampsHeadId);
                 timestampsHeadPosition = Overflow.mod(Overflow.add(timestampsHeadPosition, packetIdDiff), ResolutionTableSize);
+                UnityEngine.Debug.Log($"< SET {buffer.readUshort(2)} AT {timestampsHeadPosition} WITH DIFF {packetIdDiff}");
                 timestamps[timestampsHeadPosition] = DateTimeExtensions.now();
                 timestampsHeadId = buffer.readUshort(2);
 
@@ -279,21 +280,6 @@ namespace Kaminari
             {
                 LastServerId = Overflow.max(LastServerId, reader.tickId());
 
-                // Update lag estimation
-                foreach (ushort ack in reader.getAcks())
-                {
-                    if (Overflow.geq(lastConfirmedTimestampId, ack) && Overflow.sub(timestampsHeadId, lastConfirmedTimestampId) < 100)
-                    {
-                        continue;
-                    }
-
-                    lastConfirmedTimestampId = ack;
-                    ushort position = Overflow.mod(Overflow.sub(timestampsHeadPosition, Overflow.sub(timestampsHeadId, ack)), ResolutionTableSize);
-                    ulong diff = DateTimeExtensions.now() - timestamps[position];
-                    const float w = 0.99f;
-                    estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
-                }
-
                 // TODO(gpascualg): Make phase sync id diff optional
                 int idDiff = Overflow.abs_diff(phaseSync.TickId, LastServerId);
                 int sign = Overflow.ge(phaseSync.TickId, LastServerId) ? 1 : -1;
@@ -319,6 +305,19 @@ namespace Kaminari
             foreach (ushort ack in reader.getAcks())
             {
                 superpacket.Ack(ack);
+
+                // Update lag estimation
+                if (Overflow.geq(lastConfirmedTimestampId, ack) && Overflow.sub(timestampsHeadId, lastConfirmedTimestampId) < 100)
+                {
+                    continue;
+                }
+
+                lastConfirmedTimestampId = ack;
+                ushort position = Overflow.mod(Overflow.sub(timestampsHeadPosition, Overflow.sub(timestampsHeadId, ack)), ResolutionTableSize);
+                ulong diff = reader.Timestamp - timestamps[position];
+                UnityEngine.Debug.Log($"> ACK {ack} AT {position} +{diff}");
+                const float w = 0.99f;
+                estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
             }
 
             // Schedule ack if necessary

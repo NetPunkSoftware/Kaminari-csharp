@@ -84,6 +84,16 @@ namespace Kaminari
                 (x >= y) ? (ushort)(x - y) : (ushort)(y - x);
         }
 
+        public static int signed_diff(ushort x, ushort y)
+        {
+            if (ge(x, y))
+            {
+                return sub(x, y);
+            }
+
+            return -sub(y, x);
+        }
+
         public static ushort sub0(ushort x, ushort y)
         {
             ushort z = sub(x, y);
