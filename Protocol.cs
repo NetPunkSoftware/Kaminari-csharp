@@ -7,432 +7,446 @@ using System.Diagnostics;
 
 namespace Kaminari
 {
-	public class Protocol<PQ> : IProtocol<PQ> where PQ : IProtocolQueues
-	{
-		private class ResolvedBlock
-		{
-			public byte loopCounter;
-			public HashSet<uint> packetCounters;
-
-			public ResolvedBlock(byte loopCounter)
-			{
-				this.loopCounter = loopCounter;
-				this.packetCounters = new HashSet<uint>();
-			}
-		}
-
-		public ushort ExpectedTickId { get; private set; }
-		public ushort LastServerId { get; private set; }
-		public ushort LastTickIdRead { get;private set; }
-		public float ServerTimeDiff { get; private set; }
-
-		private ushort bufferSize;
-		private ushort sinceLastPing;
-		private float estimatedRTT;
-		private ushort sinceLastRecv;
-		private bool serverBasedSync;
-		private byte loopCounter;
-		private ulong timestamp;
-		private ushort timestampBlockId;
-		private float recvKbpsEstimate;
-		private float recvKbpsEstimateAcc;
-		private ulong recvKbpsEstimateTime;
-		private float sendKbpsEstimate;
-		private float sendKbpsEstimateAcc;
-		private ulong sendKbpsEstimateTime;
-		private uint lastRecvSize;
-		private ConcurrentDictionary<ushort, uint> perTickSize;
-		private uint lastSendSize;
-		private ServerPhaseSync<PQ> phaseSync;
-		private ConcurrentDictionary<ushort, ulong> packetTimes;
-
-		// Resolution
-		const ushort ResolutionTableSize = 200 * 4;
-		const ushort ResolutionTableDiff = ResolutionTableSize - 1;
-		private ulong[] resolutionTable;
-		private ushort oldestResolutionBlockId;
-		private ushort oldestResolutionPosition;
-
-		public Protocol()
-		{
-			phaseSync = new ServerPhaseSync<PQ>(this);
-			Reset();
-		}
-
-		public ServerPhaseSync<PQ> getPhaseSync()
-		{
-			return phaseSync;
-		}
-
-		public byte getLoopCounter()
-		{
-			return loopCounter;
-		}
-
-		public float getEstimatedRTT()
-		{
-			return estimatedRTT;
-		}
-
-		public uint getLastSentSuperPacketSize(SuperPacket<PQ> superpacket)
-		{
-			return lastSendSize;
-		}
-
-		public uint getLastRecvSuperPacketSize()
-		{
-			var size = lastRecvSize;
-			lastRecvSize = 0;
-			return size;
-		}
-
-		public float getPerTickSize()
+    public class Protocol<PQ> : IProtocol<PQ> where PQ : IProtocolQueues
+    {
+        private class ResolvedBlock
         {
-			float size = 0.0f;
-			var count = perTickSize.Count;
-			if (count == 0)
-            {
-				return 0.0f;
-            }
+            public byte loopCounter;
+            public HashSet<uint> packetCounters;
 
-			foreach (var pair in perTickSize)
+            public ResolvedBlock(byte loopCounter)
             {
-				size += pair.Value;
+                this.loopCounter = loopCounter;
+                this.packetCounters = new HashSet<uint>();
             }
-
-			perTickSize.Clear();
-			return size / count;
         }
 
-		public float RecvKbpsEstimate()
-		{
-			if (DateTimeExtensions.now() - recvKbpsEstimateTime > 1000.0f)
-			{
-				recvKbpsEstimate += recvKbpsEstimateAcc / ((DateTimeExtensions.now() - recvKbpsEstimateTime) / 1000.0f);
-				recvKbpsEstimate /= 2.0f;
-				recvKbpsEstimateAcc = 0;
-				recvKbpsEstimateTime = DateTimeExtensions.now();
-			}
+        public ushort ExpectedTickId { get; private set; }
+        public ushort LastServerId { get; private set; }
+        public ushort LastTickIdRead { get;private set; }
+        public float ServerTimeDiff { get; private set; }
 
-			return recvKbpsEstimate / 1024;
-		}
+        private ushort bufferSize;
+        private ushort sinceLastPing;
+        private float estimatedRTT;
+        private ushort sinceLastRecv;
+        private bool serverBasedSync;
+        private byte loopCounter;
+        private ulong timestamp;
+        private ushort timestampBlockId;
+        private float recvKbpsEstimate;
+        private float recvKbpsEstimateAcc;
+        private ulong recvKbpsEstimateTime;
+        private float sendKbpsEstimate;
+        private float sendKbpsEstimateAcc;
+        private ulong sendKbpsEstimateTime;
+        private uint lastRecvSize;
+        private ConcurrentDictionary<ushort, uint> perTickSize;
+        private uint lastSendSize;
+        private ServerPhaseSync<PQ> phaseSync;
+        private ConcurrentDictionary<ushort, ulong> packetTimes;
 
-		public float SendKbpsEstimate()
-		{
-			if (DateTimeExtensions.now() - sendKbpsEstimateTime > 1000.0f)
-			{
-				sendKbpsEstimate += sendKbpsEstimateAcc / ((DateTimeExtensions.now() - sendKbpsEstimateTime) / 1000.0f);
-				sendKbpsEstimate /= 2.0f;
-				sendKbpsEstimateAcc = 0;
-				sendKbpsEstimateTime = DateTimeExtensions.now();
-			}
+        // Resolution
+        const ushort ResolutionTableSize = 200 * 4;
+        const ushort ResolutionTableDiff = ResolutionTableSize - 1;
+        private ulong[] resolutionTable;
+        private ushort oldestResolutionBlockId;
+        private ushort oldestResolutionPosition;
 
-			return sendKbpsEstimate / 1024;
-		}
+        private ulong[] timestamps;
+        private ushort timestampsHeadPosition;
+        private ushort timestampsHeadId;
+        private ushort lastConfirmedTimestampId;
 
-		public void setBufferSize(ushort size)
-		{
-			bufferSize = size;
-		}
+        public Protocol()
+        {
+            phaseSync = new ServerPhaseSync<PQ>(this);
+            Reset();
+        }
 
-		public void setTimestamp(ulong timestamp, ushort blockId)
-		{
-			this.timestamp = timestamp;
-			this.timestampBlockId = blockId;
-		}
+        public ServerPhaseSync<PQ> getPhaseSync()
+        {
+            return phaseSync;
+        }
 
-		public ulong blockTimestamp(ushort blockId)
-		{
-			if (Overflow.ge(blockId, timestampBlockId))
-			{
-				return timestamp + (ulong)(blockId - timestampBlockId) * Constants.WorldHeartBeat;
-			}
+        public byte getLoopCounter()
+        {
+            return loopCounter;
+        }
 
-			return timestamp - (ulong)(timestampBlockId - blockId) * Constants.WorldHeartBeat;
-		}
+        public float getEstimatedRTT()
+        {
+            return estimatedRTT;
+        }
 
-		public void Reset()
-		{
-			bufferSize = 0;
-			sinceLastPing = 0;
-			estimatedRTT = 50;
-			sinceLastRecv = 0;
-			LastTickIdRead = 0;
-			ExpectedTickId = 0;
-			serverBasedSync = true;
-			LastServerId = 0;
-			loopCounter = 0;
-			timestamp = DateTimeExtensions.now();
-			timestampBlockId = 0;
-			recvKbpsEstimate = 0;
-			recvKbpsEstimateAcc = 0;
-			recvKbpsEstimateTime = DateTimeExtensions.now();
-			sendKbpsEstimate = 0;
-			sendKbpsEstimateAcc = 0;
-			sendKbpsEstimateTime = DateTimeExtensions.now();
-			perTickSize = new ConcurrentDictionary<ushort, uint>();
-			packetTimes = new ConcurrentDictionary<ushort, ulong>();
-			
-			resolutionTable = new ulong[ResolutionTableSize];
-			oldestResolutionBlockId = 0;
-			oldestResolutionPosition = 0;
-		}
+        public uint getLastSentSuperPacketSize(SuperPacket<PQ> superpacket)
+        {
+            return lastSendSize;
+        }
 
-		public void InitiateHandshake(SuperPacket<PQ> superpacket)
-		{
-			superpacket.SetFlag(SuperPacketFlags.Handshake);
-		}
+        public uint getLastRecvSuperPacketSize()
+        {
+            var size = lastRecvSize;
+            lastRecvSize = 0;
+            return size;
+        }
 
-		public Buffer update(ushort tickId, IBaseClient client, SuperPacket<PQ> superpacket)
-		{
-			++sinceLastPing;
-			if (needsPing())
-			{
-				sinceLastPing = 0;
-				superpacket.SetFlag(SuperPacketFlags.Ping);
-			}
+        public float getPerTickSize()
+        {
+            float size = 0.0f;
+            var count = perTickSize.Count;
+            if (count == 0)
+            {
+                return 0.0f;
+            }
 
-			// TODO(gpascualg): Lock superpacket
-			bool first_packet = true;
-			superpacket.prepare();
-			if (superpacket.finish(tickId, first_packet))
-			{
-				Buffer buffer = new Buffer(superpacket.getBuffer());
+            foreach (var pair in perTickSize)
+            {
+                size += pair.Value;
+            }
 
-				// Register time for ping purposes
-				if (!superpacket.HasFlag(SuperPacketFlags.Handshake))
-				{
-					packetTimes.AddOrUpdate(buffer.readUshort(2), DateTimeExtensions.now(), (key, old) => DateTimeExtensions.now());
-				}
+            perTickSize.Clear();
+            return size / count;
+        }
 
-				// Update estimate
-				sendKbpsEstimateAcc += buffer.getPosition();
-				lastSendSize = (ushort)buffer.getPosition();
-				
-				first_packet = false;
+        public float RecvKbpsEstimate()
+        {
+            if (DateTimeExtensions.now() - recvKbpsEstimateTime > 1000.0f)
+            {
+                recvKbpsEstimate += recvKbpsEstimateAcc / ((DateTimeExtensions.now() - recvKbpsEstimateTime) / 1000.0f);
+                recvKbpsEstimate /= 2.0f;
+                recvKbpsEstimateAcc = 0;
+                recvKbpsEstimateTime = DateTimeExtensions.now();
+            }
 
-				return buffer;
-			}
+            return recvKbpsEstimate / 1024;
+        }
 
-			lastSendSize = 0;
-			return null;
-		}
+        public float SendKbpsEstimate()
+        {
+            if (DateTimeExtensions.now() - sendKbpsEstimateTime > 1000.0f)
+            {
+                sendKbpsEstimate += sendKbpsEstimateAcc / ((DateTimeExtensions.now() - sendKbpsEstimateTime) / 1000.0f);
+                sendKbpsEstimate /= 2.0f;
+                sendKbpsEstimateAcc = 0;
+                sendKbpsEstimateTime = DateTimeExtensions.now();
+            }
 
-		private bool needsPing()
-		{
-			return sinceLastPing >= 20;
-		}
+            return sendKbpsEstimate / 1024;
+        }
 
-		public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IMarshal marshal)
-		{
-			timestampBlockId = ExpectedTickId;
-			timestamp = DateTimeExtensions.now();
+        public void setBufferSize(ushort size)
+        {
+            bufferSize = size;
+        }
 
-			if (!client.hasPendingSuperPackets())
-			{
-				if (++sinceLastRecv >= Constants.MaxBlocksUntilDisconnection)
-				{
-					client.disconnect();
-					return false;
-				}
+        public void setTimestamp(ulong timestamp, ushort blockId)
+        {
+            this.timestamp = timestamp;
+            this.timestampBlockId = blockId;
+        }
 
-				marshal.Update(client, ExpectedTickId);
-				ExpectedTickId = Overflow.inc(ExpectedTickId);
-				return false;
-			}
+        public ulong blockTimestamp(ushort blockId)
+        {
+            if (Overflow.ge(blockId, timestampBlockId))
+            {
+                return timestamp + (ulong)(blockId - timestampBlockId) * Constants.WorldHeartBeat;
+            }
 
-			sinceLastRecv = 0;
-			ushort expectedId = ExpectedTickId;
-			if (!Constants.UseKumoQueues)
-			{
-				ExpectedTickId = Overflow.sub(ExpectedTickId, bufferSize);
-			}
+            return timestamp - (ulong)(timestampBlockId - blockId) * Constants.WorldHeartBeat;
+        }
 
-			while (client.hasPendingSuperPackets() &&
-					!Overflow.ge(client.firstSuperPacketTickId(), expectedId))
-			{
-				read_impl(client, superpacket, marshal);
-			}
+        public void Reset()
+        {
+            bufferSize = 0;
+            sinceLastPing = 0;
+            estimatedRTT = 50;
+            sinceLastRecv = 0;
+            LastTickIdRead = 0;
+            ExpectedTickId = 0;
+            serverBasedSync = true;
+            LastServerId = 0;
+            loopCounter = 0;
+            timestamp = DateTimeExtensions.now();
+            timestampBlockId = 0;
+            recvKbpsEstimate = 0;
+            recvKbpsEstimateAcc = 0;
+            recvKbpsEstimateTime = DateTimeExtensions.now();
+            sendKbpsEstimate = 0;
+            sendKbpsEstimateAcc = 0;
+            sendKbpsEstimateTime = DateTimeExtensions.now();
+            perTickSize = new ConcurrentDictionary<ushort, uint>();
+            packetTimes = new ConcurrentDictionary<ushort, ulong>();
 
-			marshal.Update(client, ExpectedTickId);
-			ExpectedTickId = Overflow.inc(ExpectedTickId);
-			return true;
-		}
+            resolutionTable = new ulong[ResolutionTableSize];
+            oldestResolutionBlockId = 0;
+            oldestResolutionPosition = 0;
 
-		public void HandleServerTick(SuperPacketReader reader, SuperPacket<PQ> superpacket)
-		{
-			// Update sizes
-			recvKbpsEstimateAcc += reader.size();
-			lastRecvSize += reader.size();
-			perTickSize.AddOrUpdate(reader.tickId(), reader.size(), (key, old) => old + reader.size());
+            timestamps = new ulong[ResolutionTableSize];
+            timestampsHeadPosition = 0;
+            timestampsHeadId = 0;
+            lastConfirmedTimestampId = 0;
+        }
 
-			// Check handshake status
-			if (!superpacket.HasFlag(SuperPacketFlags.Handshake))
-			{
-				LastServerId = Overflow.max(LastServerId, reader.tickId());
+        public void InitiateHandshake(SuperPacket<PQ> superpacket)
+        {
+            superpacket.SetFlag(SuperPacketFlags.Handshake);
+        }
 
-				// Update lag estimation
-				foreach (ushort ack in reader.getAcks())
-				{
-					if (packetTimes.TryRemove(ack, out var timestamp))
-					{
-						const float w = 0.99f;
-						ulong diff = DateTimeExtensions.now() - timestamp;
-						estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
-					}
-				}
+        public Buffer update(ushort tickId, IBaseClient client, SuperPacket<PQ> superpacket)
+        {
+            ++sinceLastPing;
+            if (needsPing())
+            {
+                sinceLastPing = 0;
+                superpacket.SetFlag(SuperPacketFlags.Ping);
+            }
 
-				// TODO(gpascualg): Make phase sync id diff optional
-				int idDiff = Overflow.abs_diff(phaseSync.TickId, LastServerId);
-				int sign = Overflow.ge(phaseSync.TickId, LastServerId) ? 1 : -1;
-				ServerTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
-			}
-			else
-			{
-				// Fix phase sync, otherwise we will get a huge spike
-				LastServerId = reader.tickId();
-				if (serverBasedSync)
-				{
-					phaseSync.FixTickId(LastServerId);
-				}
-			}
+            // TODO(gpascualg): Lock superpacket
+            bool first_packet = true;
+            superpacket.prepare();
+            if (superpacket.finish(tickId, first_packet))
+            {
+                Buffer buffer = new Buffer(superpacket.getBuffer());
 
-			// Update PLL
-			phaseSync.ServerPacket(reader.tickId(), LastServerId);
-		}
+                // Register time for ping purposes
+                ushort packetIdDiff = Overflow.sub(buffer.readUshort(2), timestampsHeadId);
+                timestampsHeadPosition = Overflow.mod(Overflow.add(timestampsHeadPosition, packetIdDiff), ResolutionTableSize);
+                timestamps[timestampsHeadPosition] = DateTimeExtensions.now();
+                timestampsHeadId = buffer.readUshort(2);
 
-		public void HandleAcks(ushort tickId, SuperPacketReader reader, SuperPacket<PQ> superpacket, IMarshal marshal)
-		{
-			// Ack packets
-			foreach (ushort ack in reader.getAcks())
-			{
-				superpacket.Ack(ack);
-			}
+                // Update estimate
+                sendKbpsEstimateAcc += buffer.getPosition();
+                lastSendSize = (ushort)buffer.getPosition();
 
-			// Schedule ack if necessary
-			bool is_handshake = reader.HasFlag(SuperPacketFlags.Handshake);
-			if (is_handshake || reader.hasData() || reader.isPingPacket())
-			{
-				superpacket.scheduleAck(reader.id());
-			}
+                first_packet = false;
 
-			// Handle flags already
-			if (is_handshake)
-			{
-				// Check if there was too much of a difference, in which case, flag handshake again
-				// TODO(gpascualg): Remove re-handshake max diff magic number
-				if (Overflow.abs_diff(reader.tickId(), tickId) > 10)
-				{
-					superpacket.SetFlag(SuperPacketFlags.Handshake);
-				}
-				
-				// During handshake, we update our tick to match the other side
-				ExpectedTickId = reader.tickId();
-				LastServerId = reader.tickId();
+                return buffer;
+            }
 
-				// Reset all variables related to packet parsing
-				timestampBlockId = ExpectedTickId;
-				timestamp = DateTimeExtensions.now();
-				loopCounter = 0;
+            lastSendSize = 0;
+            return null;
+        }
 
-				// Reset marshal
-				ResetResolutionTable(reader.tickId());
-				marshal.Reset();
+        private bool needsPing()
+        {
+            return sinceLastPing >= 20;
+        }
 
-				if (!reader.HasFlag(SuperPacketFlags.Ack))
-				{
-					superpacket.SetFlag(SuperPacketFlags.Ack);
-					superpacket.SetFlag(SuperPacketFlags.Handshake);
-				}
-			}
-		}
+        public bool read(IBaseClient client, SuperPacket<PQ> superpacket, IMarshal marshal)
+        {
+            timestampBlockId = ExpectedTickId;
+            timestamp = DateTimeExtensions.now();
 
-		private void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IMarshal marshal)
-		{
-			SuperPacketReader reader = client.popPendingSuperPacket();
+            if (!client.hasPendingSuperPackets())
+            {
+                if (++sinceLastRecv >= Constants.MaxBlocksUntilDisconnection)
+                {
+                    client.disconnect();
+                    return false;
+                }
 
-			// Handshake process skips all procedures, including order
-			if (reader.HasFlag(SuperPacketFlags.Handshake))
-			{
-				// Nothing to do here, it's a handshake packet
-				// TODO(gpascualg): We don't need to add them at all
-				LastTickIdRead = reader.tickId();
-				return;
-			}
+                marshal.Update(client, ExpectedTickId);
+                ExpectedTickId = Overflow.inc(ExpectedTickId);
+                return false;
+            }
 
-			Debug.Assert(!IsOutOfOrder(reader.tickId()), "Should never have out of order packets");
-			
-			if (Overflow.sub(ExpectedTickId, reader.tickId()) > Constants.MaximumBlocksUntilResync)
-			{
-				superpacket.SetFlag(SuperPacketFlags.Handshake);
-			}
+            sinceLastRecv = 0;
+            ushort expectedId = ExpectedTickId;
+            if (!Constants.UseKumoQueues)
+            {
+                ExpectedTickId = Overflow.sub(ExpectedTickId, bufferSize);
+            }
 
-			if (LastTickIdRead > reader.tickId())
-			{
-				loopCounter = (byte)(loopCounter + 1);
-			}
+            while (client.hasPendingSuperPackets() &&
+                    !Overflow.ge(client.firstSuperPacketTickId(), expectedId))
+            {
+                read_impl(client, superpacket, marshal);
+            }
 
-			LastTickIdRead = reader.tickId();
-			reader.handlePackets<PQ, IBaseClient>(this, marshal, client);
-		}
+            marshal.Update(client, ExpectedTickId);
+            ExpectedTickId = Overflow.inc(ExpectedTickId);
+            return true;
+        }
 
-		public bool IsOutOfOrder(ushort id)
-		{
-			if (Constants.UseKumoQueues)
-			{
-				return Overflow.le(id, Overflow.sub(LastTickIdRead, bufferSize));
-			}
+        public void HandleServerTick(SuperPacketReader reader, SuperPacket<PQ> superpacket)
+        {
+            // Update sizes
+            recvKbpsEstimateAcc += reader.size();
+            lastRecvSize += reader.size();
+            perTickSize.AddOrUpdate(reader.tickId(), reader.size(), (key, old) => old + reader.size());
 
-			return Overflow.le(id, LastTickIdRead);
-		}
+            // Check handshake status
+            if (!superpacket.HasFlag(SuperPacketFlags.Handshake))
+            {
+                LastServerId = Overflow.max(LastServerId, reader.tickId());
 
-		public bool resolve(PacketReader packet, ushort blockId)
-		{
-			// Check if this is an older block id
-			if (Overflow.le(blockId, oldestResolutionBlockId))
-			{
-				ResetResolutionTable(blockId);
-				//client->flag_desync();
-				return false;
-			}
+                // Update lag estimation
+                foreach (ushort ack in reader.getAcks())
+                {
+                    if (Overflow.geq(lastConfirmedTimestampId, ack) && Overflow.sub(timestampsHeadId, lastConfirmedTimestampId) < 100)
+                    {
+                        continue;
+                    }
 
-			// Otherwise, it might be newer
-			ushort diff = Overflow.sub(blockId, oldestResolutionBlockId);
-			ushort idx = (ushort)(Overflow.add(oldestResolutionPosition, diff) % ResolutionTableSize);
-			if (diff >= ResolutionTableSize)
-			{
+                    lastConfirmedTimestampId = ack;
+                    ushort position = Overflow.mod(Overflow.sub(timestampsHeadPosition, Overflow.sub(timestampsHeadId, ack)), ResolutionTableSize);
+                    ulong diff = DateTimeExtensions.now() - timestamps[position];
+                    const float w = 0.99f;
+                    estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
+                }
 
-				// We have to move oldest so that newest points to blockId
-				ushort move_amount = Overflow.sub(diff, ResolutionTableDiff);
-				oldestResolutionBlockId = Overflow.add(oldestResolutionBlockId, move_amount);
-				oldestResolutionPosition = (ushort)(Overflow.add(oldestResolutionPosition, move_amount) % ResolutionTableSize);
+                // TODO(gpascualg): Make phase sync id diff optional
+                int idDiff = Overflow.abs_diff(phaseSync.TickId, LastServerId);
+                int sign = Overflow.ge(phaseSync.TickId, LastServerId) ? 1 : -1;
+                ServerTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
+            }
+            else
+            {
+                // Fix phase sync, otherwise we will get a huge spike
+                LastServerId = reader.tickId();
+                if (serverBasedSync)
+                {
+                    phaseSync.FixTickId(LastServerId);
+                }
+            }
 
-				// Fix diff so we don't overrun the new position
-				idx = (ushort)(Overflow.add(oldestResolutionPosition, Overflow.sub(diff, move_amount)) % ResolutionTableSize);
+            // Update PLL
+            phaseSync.ServerPacket(reader.tickId(), LastServerId);
+        }
 
-				// Clean position, as it is a newer packet that hasn't been parsed yet
-				resolutionTable[idx] = 0;
-			}
+        public void HandleAcks(ushort tickId, SuperPacketReader reader, SuperPacket<PQ> superpacket, IMarshal marshal)
+        {
+            // Ack packets
+            foreach (ushort ack in reader.getAcks())
+            {
+                superpacket.Ack(ack);
+            }
 
-			// Compute packet mask
-			ulong mask = (ulong)(1) << packet.getCounter();
+            // Schedule ack if necessary
+            bool is_handshake = reader.HasFlag(SuperPacketFlags.Handshake);
+            if (is_handshake || reader.hasData() || reader.isPingPacket())
+            {
+                superpacket.scheduleAck(reader.id());
+            }
 
-			// Get blockId position, bitmask, and compute
-			if ((resolutionTable[idx] & mask) != 0)
-			{
-				// The packet is already in
-				return false;
-			}
+            // Handle flags already
+            if (is_handshake)
+            {
+                // Check if there was too much of a difference, in which case, flag handshake again
+                // TODO(gpascualg): Remove re-handshake max diff magic number
+                if (Overflow.abs_diff(reader.tickId(), tickId) > 10)
+                {
+                    superpacket.SetFlag(SuperPacketFlags.Handshake);
+                }
 
-			resolutionTable[idx] |= mask;
-			return true;
-		}
+                // During handshake, we update our tick to match the other side
+                ExpectedTickId = reader.tickId();
+                LastServerId = reader.tickId();
 
-		public void ResetResolutionTable(ushort blockId)
-		{
-			Array.Clear(resolutionTable, 0, resolutionTable.Length);
-			oldestResolutionBlockId = Overflow.sub(blockId, ResolutionTableSize / 2);
-			oldestResolutionPosition = 0;
-		}
-	}
+                // Reset all variables related to packet parsing
+                timestampBlockId = ExpectedTickId;
+                timestamp = DateTimeExtensions.now();
+                loopCounter = 0;
+
+                // Reset marshal
+                ResetResolutionTable(reader.tickId());
+                marshal.Reset();
+
+                if (!reader.HasFlag(SuperPacketFlags.Ack))
+                {
+                    superpacket.SetFlag(SuperPacketFlags.Ack);
+                    superpacket.SetFlag(SuperPacketFlags.Handshake);
+                }
+            }
+        }
+
+        private void read_impl(IBaseClient client, SuperPacket<PQ> superpacket, IMarshal marshal)
+        {
+            SuperPacketReader reader = client.popPendingSuperPacket();
+
+            // Handshake process skips all procedures, including order
+            if (reader.HasFlag(SuperPacketFlags.Handshake))
+            {
+                // Nothing to do here, it's a handshake packet
+                // TODO(gpascualg): We don't need to add them at all
+                LastTickIdRead = reader.tickId();
+                return;
+            }
+
+            Debug.Assert(!IsOutOfOrder(reader.tickId()), "Should never have out of order packets");
+
+            if (Overflow.sub(ExpectedTickId, reader.tickId()) > Constants.MaximumBlocksUntilResync)
+            {
+                superpacket.SetFlag(SuperPacketFlags.Handshake);
+            }
+
+            if (LastTickIdRead > reader.tickId())
+            {
+                loopCounter = (byte)(loopCounter + 1);
+            }
+
+            LastTickIdRead = reader.tickId();
+            reader.handlePackets<PQ, IBaseClient>(this, marshal, client);
+        }
+
+        public bool IsOutOfOrder(ushort id)
+        {
+            if (Constants.UseKumoQueues)
+            {
+                return Overflow.le(id, Overflow.sub(LastTickIdRead, bufferSize));
+            }
+
+            return Overflow.le(id, LastTickIdRead);
+        }
+
+        public bool resolve(PacketReader packet, ushort blockId)
+        {
+            // Check if this is an older block id
+            if (Overflow.le(blockId, oldestResolutionBlockId))
+            {
+                ResetResolutionTable(blockId);
+                //client->flag_desync();
+                return false;
+            }
+
+            // Otherwise, it might be newer
+            ushort diff = Overflow.sub(blockId, oldestResolutionBlockId);
+            ushort idx = (ushort)(Overflow.add(oldestResolutionPosition, diff) % ResolutionTableSize);
+            if (diff >= ResolutionTableSize)
+            {
+
+                // We have to move oldest so that newest points to blockId
+                ushort move_amount = Overflow.sub(diff, ResolutionTableDiff);
+                oldestResolutionBlockId = Overflow.add(oldestResolutionBlockId, move_amount);
+                oldestResolutionPosition = (ushort)(Overflow.add(oldestResolutionPosition, move_amount) % ResolutionTableSize);
+
+                // Fix diff so we don't overrun the new position
+                idx = (ushort)(Overflow.add(oldestResolutionPosition, Overflow.sub(diff, move_amount)) % ResolutionTableSize);
+
+                // Clean position, as it is a newer packet that hasn't been parsed yet
+                resolutionTable[idx] = 0;
+            }
+
+            // Compute packet mask
+            ulong mask = (ulong)(1) << packet.getCounter();
+
+            // Get blockId position, bitmask, and compute
+            if ((resolutionTable[idx] & mask) != 0)
+            {
+                // The packet is already in
+                return false;
+            }
+
+            resolutionTable[idx] |= mask;
+            return true;
+        }
+
+        public void ResetResolutionTable(ushort blockId)
+        {
+            Array.Clear(resolutionTable, 0, resolutionTable.Length);
+            oldestResolutionBlockId = Overflow.sub(blockId, ResolutionTableSize / 2);
+            oldestResolutionPosition = 0;
+        }
+    }
 }

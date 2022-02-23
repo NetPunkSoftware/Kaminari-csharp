@@ -117,5 +117,10 @@ namespace Kaminari
             }
             return 1;
         }
+
+        public static ushort mod(ushort x, ushort y)
+        {
+            return (ushort)(x % y);
+        }
     }
 }
