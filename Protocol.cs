@@ -44,7 +44,6 @@ namespace Kaminari
         private ConcurrentDictionary<ushort, uint> perTickSize;
         private uint lastSendSize;
         private ServerPhaseSync<PQ> phaseSync;
-        private ConcurrentDictionary<ushort, ulong> packetTimes;
 
         // Resolution
         const ushort ResolutionTableSize = 200 * 4;
@@ -176,7 +175,6 @@ namespace Kaminari
             sendKbpsEstimateAcc = 0;
             sendKbpsEstimateTime = DateTimeExtensions.now();
             perTickSize = new ConcurrentDictionary<ushort, uint>();
-            packetTimes = new ConcurrentDictionary<ushort, ulong>();
 
             resolutionTable = new ulong[ResolutionTableSize];
             oldestResolutionBlockId = 0;
