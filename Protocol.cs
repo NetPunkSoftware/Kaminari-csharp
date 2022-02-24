@@ -45,6 +45,10 @@ namespace Kaminari
         private uint lastSendSize;
         private ServerPhaseSync<PQ> phaseSync;
 
+        // De-duplicate acks
+        private ulong processedAcks;
+        private ushort processedAckBase;
+
         // Resolution
         const ushort ResolutionTableSize = 200 * 4;
         const ushort ResolutionTableDiff = ResolutionTableSize - 1;
@@ -52,6 +56,7 @@ namespace Kaminari
         private ushort oldestResolutionBlockId;
         private ushort oldestResolutionPosition;
 
+        // Lag calc
         private ulong[] timestamps;
         private ushort timestampsHeadPosition;
         private ushort timestampsHeadId;
@@ -175,6 +180,9 @@ namespace Kaminari
             sendKbpsEstimateAcc = 0;
             sendKbpsEstimateTime = DateTimeExtensions.now();
             perTickSize = new ConcurrentDictionary<ushort, uint>();
+
+            processedAcks = 0;
+            processedAckBase = 0;
 
             resolutionTable = new ulong[ResolutionTableSize];
             oldestResolutionBlockId = 0;
@@ -303,12 +311,38 @@ namespace Kaminari
             // Ack packets
             foreach (ushort ack in reader.getAcks())
             {
+                // Check if this ack > lastAck
+                if (Kaminari.Overflow.ge(ack, processedAckBase))
+                {
+                    int displace = Kaminari.Overflow.sub(ack, processedAckBase);
+                    processedAcks = processedAcks << displace;
+                    processedAckBase = ack;
+                }
+
+                // Now, check if the ack has already been processed
+                int ackPosition = Overflow.sub(processedAckBase, ack);
+                if (ackPosition >= 64)
+                {
+                    ackPosition = 0;
+                    processedAcks = 0;
+                    processedAckBase = ack;
+                }
+
+                // If it is already masked, it means it has already been processed
+                ulong ackMask = (ulong)1 << ackPosition;
+                if ((processedAcks & ackMask) > 0)
+                {
+                    continue;
+                }
+                processedAcks = processedAcks | ackMask;
+
+                // Otherwise, let superpacker handle the ack
                 superpacket.Ack(ack);
 
                 // Update lag estimation
                 if (Overflow.geq(lastConfirmedTimestampId, ack) && Overflow.sub(timestampsHeadId, lastConfirmedTimestampId) < 100)
                 {
-                    UnityEngine.Debug.Log($"[ Ignoring ACK {ack} with lastConfirmed {lastConfirmedTimestampId}, headID {timestampsHeadId}");
+                    // TODO(gpascualg): This can be used as a connection quality estimate
                     continue;
                 }
 
