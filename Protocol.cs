@@ -281,9 +281,8 @@ namespace Kaminari
                 LastServerId = Overflow.max(LastServerId, reader.tickId());
 
                 // TODO(gpascualg): Make phase sync id diff optional
-                int idDiff = Overflow.abs_diff(phaseSync.TickId, LastServerId);
-                int sign = Overflow.ge(phaseSync.TickId, LastServerId) ? 1 : -1;
-                ServerTimeDiff = sign * idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
+                int idDiff = Overflow.signed_diff(phaseSync.TickId, LastServerId);
+                ServerTimeDiff = idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
             }
             else
             {

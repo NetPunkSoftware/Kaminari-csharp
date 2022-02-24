@@ -32,7 +32,7 @@ namespace Kaminari
             NextTick = DateTimeExtensions.now() + 50;
             Integrator = 50;
             this.protocol = protocol;
-            
+
             // No actions yet
             earlyOneShot = new ConcurrentQueue<Action>();
             oneShot = new ConcurrentQueue<Action>();
@@ -97,7 +97,7 @@ namespace Kaminari
 
             // Get current tick time
             ulong time = TickTime + (ulong)Integrator;
-        
+
             // More than one packet in between?
             ushort packetDiff = Overflow.sub(maxID, lastPacketID);
             lastPacketID = maxID;
@@ -113,7 +113,7 @@ namespace Kaminari
             // Integrator = 0.999f * Integrator + err;
             float Ki = 1e-3f;
             Integrator = Ki * err + Integrator;
-        
+
             // NCO
             NextTick = time + (ulong)Integrator;
         }
