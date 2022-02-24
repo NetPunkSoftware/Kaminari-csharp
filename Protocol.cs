@@ -308,6 +308,7 @@ namespace Kaminari
                 // Update lag estimation
                 if (Overflow.geq(lastConfirmedTimestampId, ack) && Overflow.sub(timestampsHeadId, lastConfirmedTimestampId) < 100)
                 {
+                    UnityEngine.Debug.Log($"[ Ignoring ACK {ack} with lastConfirmed {lastConfirmedTimestampId}, headID {timestampsHeadId}");
                     continue;
                 }
 

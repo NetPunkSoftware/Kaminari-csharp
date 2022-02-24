@@ -11,15 +11,16 @@ namespace Kaminari
         public ulong NextTick { get; private set; }
         public ulong MeanTickTime { get; private set; }
         public float Integrator { get; private set; }
-        public float AdjustedIntegrator => Integrator + protocol.ServerTimeDiff;
+        public float AdjustedIntegrator => Integrator + protocol.ServerTimeDiff - MeanTickTime;
+
+        public Action OnEarlyTick;
+        public Action OnTick;
+        public Action OnLateTick;
 
         private Protocol<PQ> protocol;
         private ushort lastPacketID;
         private ConcurrentQueue<Action> earlyOneShot;
         private ConcurrentQueue<Action> oneShot;
-        private SyncList<Action> onEarlyTick;
-        private SyncList<Action> onTick;
-        private SyncList<Action> onLateTick;
         private bool running;
         private Thread thread;
         public ushort TickId { get; private set; }
@@ -36,9 +37,6 @@ namespace Kaminari
             // No actions yet
             earlyOneShot = new ConcurrentQueue<Action>();
             oneShot = new ConcurrentQueue<Action>();
-            onEarlyTick = new SyncList<Action>();
-            onTick = new SyncList<Action>();
-            onLateTick = new SyncList<Action>();
         }
 
         public void Start()
@@ -69,22 +67,6 @@ namespace Kaminari
         public void OneShot(Action action)
         {
             oneShot.Enqueue(action);
-        }
-
-        public void RegisterEarlyTickCallback(Action action)
-        {
-            onEarlyTick.Add(action);
-        }
-
-
-        public void RegisterTickCallback(Action action)
-        {
-            onTick.Add(action);
-        }
-
-        public void RegisterLateTickCallback(Action action)
-        {
-            onLateTick.Add(action);
         }
 
         public void ServerPacket(ushort currentID, ushort maxID)
@@ -132,25 +114,15 @@ namespace Kaminari
                     action();
                 }
 
-                foreach (var action in onEarlyTick)
-                {
-                    action();
-                }
-
-                foreach (var action in onTick)
-                {
-                    action();
-                }
+                OnEarlyTick?.Invoke();
+                OnTick?.Invoke();
 
                 while (oneShot.TryDequeue(out var action))
                 {
                     action();
                 }
 
-                foreach (var action in onLateTick)
-                {
-                    action();
-                }
+                OnLateTick?.Invoke();
 
                 // Update tick time
                 MeanTickTime = DateTimeExtensions.now() - TickTime;
