@@ -218,7 +218,6 @@ namespace Kaminari
                 // Register time for ping purposes
                 ushort packetIdDiff = Overflow.sub(buffer.readUshort(2), timestampsHeadId);
                 timestampsHeadPosition = Overflow.mod(Overflow.add(timestampsHeadPosition, packetIdDiff), ResolutionTableSize);
-                UnityEngine.Debug.Log($"< SET {buffer.readUshort(2)} AT {timestampsHeadPosition} WITH DIFF {packetIdDiff}");
                 timestamps[timestampsHeadPosition] = DateTimeExtensions.now();
                 timestampsHeadId = buffer.readUshort(2);
 
@@ -349,7 +348,6 @@ namespace Kaminari
                 lastConfirmedTimestampId = ack;
                 ushort position = Overflow.mod(Overflow.sub(timestampsHeadPosition, Overflow.sub(timestampsHeadId, ack)), ResolutionTableSize);
                 ulong diff = reader.Timestamp - timestamps[position];
-                UnityEngine.Debug.Log($"> ACK {ack} AT {position} +{diff}");
                 const float w = 0.99f;
                 estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
             }
