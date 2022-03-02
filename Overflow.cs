@@ -73,6 +73,12 @@ namespace Kaminari
                 (x >= y) ? (ushort)(x - y) : (ushort)(ushort.MaxValue - y + x);
         }
 
+        public static ushort submod(ushort x, ushort y, ushort m)
+        {
+            return
+                (x >= y) ? mod((ushort)(x - y), m) : (ushort)(m - y + x);
+        }
+
         public static ushort add(ushort x, ushort y)
         {
             return (ushort)(x + y);

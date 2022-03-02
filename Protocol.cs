@@ -346,7 +346,7 @@ namespace Kaminari
                 }
 
                 lastConfirmedTimestampId = ack;
-                ushort position = Overflow.mod(Overflow.sub(timestampsHeadPosition, Overflow.sub(timestampsHeadId, ack)), ResolutionTableSize);
+                ushort position = Overflow.submod(timestampsHeadPosition, Overflow.sub(timestampsHeadId, ack), ResolutionTableSize);
                 ulong diff = reader.Timestamp - timestamps[position];
                 const float w = 0.99f;
                 estimatedRTT = estimatedRTT * w + diff * (1.0f - w);
