@@ -289,7 +289,7 @@ namespace Kaminari
 
                 // TODO(gpascualg): Make phase sync id diff optional
                 int idDiff = Overflow.signed_diff(phaseSync.TickId, LastServerId);
-                ServerTimeDiff = idDiff - (estimatedRTT / 50.0f + 1); //- (int)(estimatedRTT / 2.0f);
+                ServerTimeDiff = idDiff - (estimatedRTT / 100.0f + 1); //- (int)(estimatedRTT / 2.0f);
             }
             else
             {

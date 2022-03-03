@@ -25,12 +25,14 @@ namespace Kaminari
         private Thread thread;
         public ushort TickId { get; private set; }
         public ulong TickTime { get; private set; }
+        public ulong PhaserTickTime { get; private set; }
 
         public ServerPhaseSync(Protocol<PQ> protocol)
         {
             // Base values
             TickId = 0;
             NextTick = DateTimeExtensions.now() + 50;
+            PhaserTickTime = DateTimeExtensions.now();
             Integrator = 50;
             this.protocol = protocol;
 
@@ -78,14 +80,16 @@ namespace Kaminari
             }
 
             // Get current tick time
-            ulong time = TickTime + (ulong)Integrator;
-
+            ulong time = PhaserTickTime + (ulong)Integrator;
+            PhaserTickTime = DateTimeExtensions.now();
+           
             // More than one packet in between?
             ushort packetDiff = Overflow.sub(maxID, lastPacketID);
             lastPacketID = maxID;
             if (packetDiff > 1)
             {
                 NextTick += (ulong)(Integrator * (packetDiff - 1));
+                time += (ulong)(Integrator * (packetDiff - 1));
             }
 
             // Phase detector
